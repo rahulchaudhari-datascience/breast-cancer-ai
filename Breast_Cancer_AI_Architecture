@@ -1,0 +1,246 @@
+# Breast Cancer AI Research Platform Architecture
+
+## Enterprise & Research Grade Architecture (Optimized for RTX 3050 6GB Laptop)
+
+### Vision
+Develop a research-grade breast cancer detection platform supporting:
+- Mammogram analysis
+- Breast segmentation
+- ROI extraction
+- Tumor classification
+- BI-RADS assessment
+- Explainable AI
+- Clinical report generation
+- Experiment tracking
+- Reproducible research
+
+---
+
+## High-Level Architecture
+
+```text
+Streamlit UI
+    ↓
+FastAPI Gateway
+    ↓
+Inference Orchestrator
+    ↓
+Service Layer
+    ├── Image Validation
+    ├── Preprocessing
+    ├── Segmentation
+    ├── ROI Extraction
+    ├── Classification
+    ├── BI-RADS Prediction
+    ├── Explainability
+    ├── Confidence Scoring
+    └── Report Generation
+    ↓
+Model Layer
+    ├── U-Net++
+    ├── ConvNeXt-Tiny
+    ├── EfficientNetV2-S
+    └── GradCAM++
+    ↓
+Data Layer
+    ├── PostgreSQL
+    ├── MLflow
+    └── File Storage
+```
+
+---
+
+## Recommended Models
+
+### Segmentation
+- U-Net++
+
+### Classification
+- ConvNeXt-Tiny
+
+### Benchmark Models
+- ResNet50
+- EfficientNetV2-S
+- ConvNeXt-Tiny
+
+---
+
+## Folder Structure
+
+```text
+breast-cancer-ai/
+├── api/
+├── core/
+├── datasets/
+│   ├── raw/
+│   ├── processed/
+│   ├── masks/
+│   └── annotations/
+├── models/
+├── services/
+├── repositories/
+├── pipelines/
+├── mlflow/
+├── reports/
+├── notebooks/
+├── tests/
+├── docs/
+├── frontend/
+├── database/
+├── docker/
+└── requirements.txt
+```
+
+---
+
+## Training Pipeline
+
+```text
+Dataset
+   ↓
+Validation
+   ↓
+Cleaning
+   ↓
+Augmentation
+   ↓
+Train U-Net++
+   ↓
+Train ResNet50
+   ↓
+Train EfficientNetV2-S
+   ↓
+Train ConvNeXt-Tiny
+   ↓
+Evaluation
+   ↓
+Model Registry
+```
+
+---
+
+## Inference Pipeline
+
+```text
+Upload Mammogram
+        ↓
+Image Validation
+        ↓
+Preprocessing
+        ↓
+U-Net++ Segmentation
+        ↓
+ROI Extraction
+        ↓
+ConvNeXt Classification
+        ↓
+BI-RADS Prediction
+        ↓
+Confidence Score
+        ↓
+GradCAM++
+        ↓
+PDF Report Generation
+```
+
+---
+
+## Database Tables
+
+### Patients
+- patient_id
+- patient_name
+- age
+- gender
+- created_at
+
+### Studies
+- study_id
+- patient_id
+- study_date
+- modality
+
+### Images
+- image_id
+- study_id
+- image_path
+- image_type
+
+### Predictions
+- prediction_id
+- image_id
+- model_name
+- prediction
+- confidence
+- birads
+
+### Reports
+- report_id
+- prediction_id
+- report_path
+- created_at
+
+---
+
+## MLflow Tracking
+
+Track:
+- Accuracy
+- Precision
+- Recall
+- F1 Score
+- ROC-AUC
+- Dice Score
+- IoU
+- Learning Rate
+- Batch Size
+- Training Time
+- GPU Usage
+
+---
+
+## Hardware Configuration
+
+- CPU: Intel i5-1350H
+- GPU: RTX 3050 6GB
+- Storage: 512GB SSD
+- OS: Windows 11
+
+Recommended:
+- Batch Size: 8
+- Image Size: 512x512
+- Epochs: 50-100
+- Mixed Precision: Enabled
+
+---
+
+## Technology Stack
+
+- Frontend: Streamlit
+- Backend: FastAPI
+- Database: PostgreSQL
+- AI Framework: PyTorch
+- Segmentation: U-Net++
+- Classification: ConvNeXt-Tiny
+- Explainability: GradCAM++
+- Tracking: MLflow
+- Reporting: ReportLab
+- Deployment: Docker
+
+---
+
+## Final Recommendation
+
+Segmentation  → U-Net++
+
+Classification → ConvNeXt-Tiny
+
+Explainability → GradCAM++
+
+Backend → FastAPI
+
+Database → PostgreSQL
+
+Frontend → Streamlit
+
+Experiment Tracking → MLflow

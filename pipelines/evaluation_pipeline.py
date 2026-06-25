@@ -9,9 +9,10 @@ import cv2
 import numpy as np
 import pandas as pd
 import torch
-import timm
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
+
+from services.model_builder import build_classification_model
 
 from config import (
     DEVICE,
@@ -108,6 +109,8 @@ class EvaluationPipeline:
         self.model.to(self.device)
         self.model.eval()
 
+        self.pin_memory = torch.cuda.is_available()
+
         METRICS_OUTPUT_DIR.mkdir(
             parents=True,
             exist_ok=True,
@@ -119,10 +122,10 @@ class EvaluationPipeline:
         )
 
     def _build_model(self):
-        return timm.create_model(
-            self.model_name,
-            pretrained=False,
+        return build_classification_model(
+            model_name=self.model_name,
             num_classes=NUM_CLASSES,
+            pretrained=False,
         )
 
     def _load_checkpoint(self):
@@ -154,18 +157,27 @@ class EvaluationPipeline:
         test_csv: str,
     ) -> DataLoader:
 
-        test_df = pd.read_csv(test_csv)
+        csv_path = Path(test_csv)
 
-        dataset = MammogramEvaluationDataset(
-            test_df
-        )
+        if not csv_path.exists():
+            raise FileNotFoundError(f"Test CSV not found: {csv_path}")
+
+        test_df = pd.read_csv(csv_path)
+
+        if "image_path" not in test_df.columns or "label" not in test_df.columns:
+            raise ValueError("Test CSV must contain 'image_path' and 'label' columns.")
+
+        if len(test_df) == 0:
+            raise ValueError("Test dataset is empty. Check test CSV and image paths.")
+
+        dataset = MammogramEvaluationDataset(test_df)
 
         loader = DataLoader(
             dataset,
             batch_size=BATCH_SIZE,
             shuffle=False,
             num_workers=NUM_WORKERS,
-            pin_memory=True,
+            pin_memory=self.pin_memory,
         )
 
         return loader

@@ -4,6 +4,7 @@ from typing import Optional
 
 import cv2
 import numpy as np
+import torch
 import albumentations as A
 
 from albumentations.pytorch import ToTensorV2
@@ -116,20 +117,48 @@ class PreprocessingService:
 
         return image
 
-    # -------------------------------------------------
-    # IMAGE FORMAT
-    # -------------------------------------------------
+    def preprocess_for_model(
+        self,
+        image: np.ndarray,
+        image_size: Optional[int] = None,
+    ) -> torch.Tensor:
+        image = self.ensure_rgb(image)
+
+        size = image_size or self.image_size
+        image = cv2.resize(image, (size, size))
+        image = image.astype(np.float32) / 255.0
+
+        mean = np.array((0.485, 0.456, 0.406), dtype=np.float32)
+        std = np.array((0.229, 0.224, 0.225), dtype=np.float32)
+
+        image = (image - mean) / std
+
+        tensor = torch.from_numpy(image.transpose(2, 0, 1)).float()
+        return tensor.unsqueeze(0)
 
     def ensure_rgb(
         self,
         image: np.ndarray
     ) -> np.ndarray:
 
-        if len(image.shape) == 2:
+        if image is None:
+            raise ValueError("Input image is None.")
 
-            image = cv2.cvtColor(
+        if image.ndim == 2:
+            return cv2.cvtColor(
                 image,
                 cv2.COLOR_GRAY2RGB
+            )
+
+        if image.ndim == 3 and image.shape[2] == 4:
+            return cv2.cvtColor(
+                image,
+                cv2.COLOR_RGBA2RGB
+            )
+
+        if image.ndim != 3 or image.shape[2] != 3:
+            raise ValueError(
+                f"Unsupported image shape: {image.shape}. Expected HxWx3 or HxW."
             )
 
         return image

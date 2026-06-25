@@ -68,66 +68,87 @@ class BreastCancerInferencePipeline:
 
         original_image = self._ensure_rgb(image)
 
-        processed_tensor = self.preprocessing_service.preprocess(
-            original_image,
-            training=False,
-        )
+        if original_image.size == 0:
+            raise ValueError("Input image is empty.")
 
-        mask = self.segmentation_service.segment(
-            processed_tensor,
-        )
+        try:
+            processed_tensor = self.preprocessing_service.preprocess(
+                original_image,
+                training=False,
+            )
 
-        processed_image = self._tensor_to_rgb_image(
-            processed_tensor,
-        )
+            mask = self.segmentation_service.segment(processed_tensor)
 
-        roi_result = self.roi_service.extract(
-            processed_image,
-            mask,
-        )
+            processed_image = self._tensor_to_rgb_image(
+                processed_tensor,
+            )
 
-        roi = roi_result["roi"]
+            roi_result = self.roi_service.extract(
+                processed_image,
+                mask,
+            )
 
-        classification_result = self.classification_service.predict(
-            roi,
-        )
+            roi_status = roi_result.get("status", "success")
+            roi = roi_result.get("roi")
+            if roi is None:
+                roi = processed_image
+                roi_status = "fallback_to_full_image"
 
-        birads_result = self.birads_service.predict(
-            roi,
-        )
+            classification_result = self.classification_service.predict(
+                roi,
+            )
 
-        confidence_result = self.confidence_service.analyze(
-            classification_result["probabilities"],
-        )
+            birads_result = self.birads_service.predict(
+                roi,
+            )
 
-        final_confidence = self.confidence_service.combine_confidence(
-            classification_confidence=classification_result["confidence"],
-            birads_confidence=birads_result["confidence"],
-        )
+            confidence_result = self.confidence_service.analyze(
+                classification_result["probabilities"],
+            )
 
-        heatmap = self.explainability_service.generate(
-            roi=roi,
-            class_id=classification_result["class_id"],
-        )
+            final_confidence = self.confidence_service.combine_confidence(
+                classification_confidence=classification_result["confidence"],
+                birads_confidence=birads_result["confidence"],
+            )
+        except Exception as exc:
+            print(f"[ERROR] Inference pipeline failed: {exc}")
+            return {
+                "status": "error",
+                "error": str(exc),
+            }
+
+        try:
+            heatmap = self.explainability_service.generate(
+                roi=roi,
+                class_id=classification_result["class_id"],
+            )
+        except Exception as exc:
+            heatmap = None
+            print(f"[WARNING] Explainability generation failed: {exc}")
 
         report_path: Optional[str] = None
 
         if generate_report:
-            report_path = self.report_service.generate(
-                prediction=classification_result,
-                birads=birads_result,
-                confidence=final_confidence,
-                heatmap=heatmap,
-                patient_id=patient_id,
-            )
+            try:
+                report_path = self.report_service.generate(
+                    prediction=classification_result,
+                    birads=birads_result,
+                    confidence=final_confidence,
+                    heatmap=heatmap,
+                    patient_id=patient_id,
+                )
+            except Exception as exc:
+                report_path = None
+                print(f"[WARNING] Report generation failed: {exc}")
 
         return {
             "original": original_image,
             "processed": processed_image,
             "mask": mask,
             "roi": roi,
-            "roi_overlay": roi_result["overlay"],
-            "bbox": roi_result["bbox"],
+            "roi_overlay": roi_result.get("overlay"),
+            "bbox": roi_result.get("bbox"),
+            "roi_status": roi_status,
             "prediction": classification_result["prediction"],
             "class_id": classification_result["class_id"],
             "probability": classification_result["probability"],
@@ -158,17 +179,17 @@ class BreastCancerInferencePipeline:
         image: np.ndarray,
     ) -> np.ndarray:
 
-        if image.ndim == 2:
-            image = cv2.cvtColor(
-                image,
-                cv2.COLOR_GRAY2RGB,
-            )
+        if image is None:
+            raise ValueError("Input image is None.")
 
-        if image.shape[-1] == 4:
-            image = cv2.cvtColor(
-                image,
-                cv2.COLOR_RGBA2RGB,
-            )
+        if image.ndim == 2:
+            return cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+
+        if image.ndim == 3 and image.shape[-1] == 4:
+            return cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
+
+        if image.ndim != 3 or image.shape[-1] != 3:
+            raise ValueError(f"Unsupported image shape: {image.shape}. Expected HxWx3 or HxW.")
 
         return image
 

@@ -7,10 +7,12 @@ import cv2
 import numpy as np
 import torch
 
+from services.model_builder import build_segmentation_model
+
 from config import (
     DEVICE,
     SEGMENTATION_THRESHOLD,
-    NNUNET_CHECKPOINT
+    UNETPP_CHECKPOINT,
 )
 
 
@@ -36,19 +38,35 @@ class SegmentationService:
 
     def __init__(
         self,
-        checkpoint_path: Optional[str] = None
+        checkpoint_path: Optional[str] = None,
+        encoder_name: str = "resnet34",
+        in_channels: int = 3,
+        classes: int = 1,
     ):
 
         self.device = DEVICE
-
         self.checkpoint_path = (
             checkpoint_path
-            or str(NNUNET_CHECKPOINT)
+            or str(UNETPP_CHECKPOINT)
         )
+        self.encoder_name = encoder_name
+        self.in_channels = in_channels
+        self.classes = classes
 
-        self.model = None
-
+        self.model = self._build_model()
         self.load_model()
+
+    # =====================================================
+    # MODEL BUILDING
+    # =====================================================
+
+    def _build_model(self) -> torch.nn.Module:
+        return build_segmentation_model(
+            encoder_name=self.encoder_name,
+            in_channels=self.in_channels,
+            classes=self.classes,
+            activation=None,
+        )
 
     # =====================================================
     # MODEL LOADING
@@ -56,29 +74,29 @@ class SegmentationService:
 
     def load_model(self):
 
-        """
-        Replace this with actual nnU-Net loading
-        once model training is completed.
-        """
+        if Path(self.checkpoint_path).exists():
+            try:
+                checkpoint = torch.load(
+                    self.checkpoint_path,
+                    map_location=self.device,
+                )
 
-        if Path(
-            self.checkpoint_path
-        ).exists():
+                if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+                    self.model.load_state_dict(checkpoint["model_state_dict"])
+                else:
+                    self.model.load_state_dict(checkpoint)
 
-            self.model = torch.jit.load(
-                self.checkpoint_path,
-                map_location=self.device
-            )
-
-            self.model.eval()
-
+                print(f"[INFO] Loaded segmentation checkpoint: {self.checkpoint_path}")
+            except Exception as exc:
+                print(
+                    f"[WARNING] Failed to load segmentation checkpoint: {exc}. "
+                    "Using untrained U-Net++ model."
+                )
         else:
+            print("[INFO] Segmentation checkpoint not found. Using untrained U-Net++ model.")
 
-            self.model = None
-
-            print(
-                "[INFO] Segmentation model not found."
-            )
+        self.model.to(self.device)
+        self.model.eval()
 
     # =====================================================
     # INFERENCE
@@ -87,64 +105,50 @@ class SegmentationService:
     @torch.no_grad()
     def segment(
         self,
-        image_tensor
+        image_tensor,
     ) -> np.ndarray:
 
         """
         image_tensor:
-        Shape:
-            [C,H,W]
-            or
-            [1,C,H,W]
+            Torch tensor of shape [C,H,W] or [1,C,H,W].
         """
 
-        if self.model is None:
+        if image_tensor is None:
+            raise ValueError("Input tensor for segmentation is None.")
 
-            return self.fallback_mask(
-                image_tensor
+        if not isinstance(image_tensor, torch.Tensor):
+            image_tensor = torch.tensor(
+                image_tensor,
+                dtype=torch.float32,
             )
 
         if image_tensor.dim() == 3:
+            image_tensor = image_tensor.unsqueeze(0)
 
-            image_tensor = (
-                image_tensor
-                .unsqueeze(0)
+        if image_tensor.dim() != 4:
+            raise ValueError(
+                f"Segmentation input must be 4D tensor, got shape {image_tensor.shape}."
             )
 
-        image_tensor = (
-            image_tensor
-            .to(self.device)
-        )
+        image_tensor = image_tensor.to(self.device)
 
-        logits = self.model(
-            image_tensor
-        )
+        try:
+            logits = self.model(image_tensor)
+        except Exception as exc:
+            print(f"[WARNING] Segmentation model inference failed: {exc}. Falling back to Otsu.")
+            return self.fallback_mask(image_tensor)
 
-        probs = torch.sigmoid(
-            logits
-        )
+        probs = torch.sigmoid(logits)
 
-        mask = (
-            probs >
-            SEGMENTATION_THRESHOLD
-        ).float()
+        mask = (probs > SEGMENTATION_THRESHOLD).float()
+        mask = mask.squeeze().cpu().numpy()
 
-        mask = (
-            mask
-            .squeeze()
-            .cpu()
-            .numpy()
-        )
+        if mask.ndim == 3:
+            mask = mask[0]
 
-        mask = (
-            mask * 255
-        ).astype(np.uint8)
+        mask = (mask * 255).astype(np.uint8)
 
-        mask = self.postprocess(
-            mask
-        )
-
-        return mask
+        return self.postprocess(mask)
 
     # =====================================================
     # POSTPROCESSING
@@ -207,56 +211,51 @@ class SegmentationService:
 
     def fallback_mask(
         self,
-        image_tensor
+        image_tensor,
     ) -> np.ndarray:
 
         """
-        Used before training.
-
-        Creates a rough ROI mask.
+        Used before training. Creates a rough tumor mask from the input tensor.
         """
 
-        image = (
-            image_tensor
-            .cpu()
-            .numpy()
-        )
+        image = image_tensor.cpu().numpy()
 
-        if image.ndim == 3:
+        if image.ndim == 4:
+            image = image.squeeze(0)
 
-            image = np.transpose(
-                image,
-                (1, 2, 0)
+        if image.ndim == 3 and image.shape[0] in (1, 3):
+            image = np.transpose(image, (1, 2, 0))
+
+        if image.ndim not in (2, 3):
+            raise ValueError(
+                f"Fallback mask expects 2D or HxWxC image, got shape {image.shape}."
             )
+
+        image = image.astype(np.float32)
+        if image.max() <= 1.0:
+            image = image * 255.0
 
         image = cv2.normalize(
             image,
             None,
             0,
             255,
-            cv2.NORM_MINMAX
-        )
+            cv2.NORM_MINMAX,
+        ).astype(np.uint8)
 
-        image = image.astype(
-            np.uint8
-        )
-
-        gray = cv2.cvtColor(
-            image,
-            cv2.COLOR_RGB2GRAY
-        )
+        if image.ndim == 3 and image.shape[2] == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        else:
+            gray = image
 
         _, mask = cv2.threshold(
             gray,
             0,
             255,
-            cv2.THRESH_BINARY +
-            cv2.THRESH_OTSU
+            cv2.THRESH_BINARY + cv2.THRESH_OTSU,
         )
 
-        return self.postprocess(
-            mask
-        )
+        return self.postprocess(mask)
 
     # =====================================================
     # VISUALIZATION

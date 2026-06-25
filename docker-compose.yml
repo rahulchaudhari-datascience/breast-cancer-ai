@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    container_name: breast-cancer-ai-api
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DEVICE=cpu  # Change to cuda if GPU available
+    volumes:
+      - ./models:/app/models          # Mount trained models from Colab
+      - ./reports:/app/reports        # Mount generated reports
+      - ./datasets:/app/datasets      # Optional: mount datasets
+    restart: unless-stopped
+    
+  streamlit:
+    build: .
+    container_name: breast-cancer-ai-ui
+    ports:
+      - "8501:8501"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DEVICE=cpu  # Change to cuda if GPU available
+    volumes:
+      - ./models:/app/models
+      - ./reports:/app/reports
+      - ./datasets:/app/datasets
+    restart: unless-stopped
+    command: streamlit run app.py --server.port=8501 --server.address=0.0.0.0
+
+  # Optional: PostgreSQL for report/study tracking
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: breast-cancer-db
+  #   environment:
+  #     POSTGRES_USER: bc_admin
+  #     POSTGRES_PASSWORD: bc_password
+  #     POSTGRES_DB: breast_cancer_ai
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+
+# volumes:
+#   postgres_data:

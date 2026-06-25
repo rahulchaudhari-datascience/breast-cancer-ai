@@ -5,15 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Optional
 
-import cv2
 import numpy as np
 import torch
 import torch.nn as nn
-import timm
+from services.model_builder import build_classification_model
+from services.preprocessing_service import PreprocessingService
 
 from config import (
     DEVICE,
-    IMAGE_SIZE,
     NUM_CLASSES,
     CLASS_NAMES,
     CONVNEXT_CHECKPOINT,
@@ -46,76 +45,46 @@ class ClassificationService:
         self.model_name = model_name
         self.checkpoint_path = checkpoint_path or str(CONVNEXT_CHECKPOINT)
 
+        self.preprocessing = PreprocessingService()
         self.model = self._build_model()
-        self._load_checkpoint()
-
         self.model.to(self.device)
+        self._load_checkpoint()
         self.model.eval()
 
     def _build_model(self) -> nn.Module:
-        model = timm.create_model(
-            self.model_name,
-            pretrained=True,
+        return build_classification_model(
+            model_name=self.model_name,
             num_classes=NUM_CLASSES,
+            pretrained=False,
         )
-        return model
 
     def _load_checkpoint(self):
         path = Path(self.checkpoint_path)
 
         if not path.exists():
-            print("[INFO] Classification checkpoint not found. Using pretrained base model.")
+            print("[INFO] Classification checkpoint not found. Using untrained ConvNeXt model.")
             return
 
-        checkpoint = torch.load(
-            path,
-            map_location=self.device,
-        )
+        try:
+            checkpoint = torch.load(
+                path,
+                map_location=self.device,
+            )
 
-        if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
-            self.model.load_state_dict(checkpoint["model_state_dict"])
-        else:
-            self.model.load_state_dict(checkpoint)
+            if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+                self.model.load_state_dict(checkpoint["model_state_dict"])
+            else:
+                self.model.load_state_dict(checkpoint)
 
-        print(f"[INFO] Loaded classification checkpoint: {path}")
+            print(f"[INFO] Loaded classification checkpoint: {path}")
+        except Exception as exc:
+            print(f"[WARNING] Failed to load classification checkpoint: {exc}. Using model weights as initialized.")
 
     def preprocess_roi(
         self,
         roi: np.ndarray,
     ) -> torch.Tensor:
-
-        if roi is None:
-            raise ValueError("ROI image is None.")
-
-        if roi.ndim == 2:
-            roi = cv2.cvtColor(roi, cv2.COLOR_GRAY2RGB)
-
-        roi = cv2.resize(
-            roi,
-            (IMAGE_SIZE, IMAGE_SIZE),
-        )
-
-        roi = roi.astype(np.float32) / 255.0
-
-        mean = np.array(
-            [0.485, 0.456, 0.406],
-            dtype=np.float32,
-        )
-
-        std = np.array(
-            [0.229, 0.224, 0.225],
-            dtype=np.float32,
-        )
-
-        roi = (roi - mean) / std
-
-        tensor = torch.from_numpy(
-            roi.transpose(2, 0, 1)
-        ).float()
-
-        tensor = tensor.unsqueeze(0)
-
-        return tensor
+        return self.preprocessing.preprocess_for_model(roi)
 
     @torch.no_grad()
     def predict(
@@ -127,10 +96,10 @@ class ClassificationService:
 
         logits = self.model(tensor)
 
-        probs = torch.softmax(
-            logits,
-            dim=1,
-        )
+        if logits.ndim == 1:
+            logits = logits.unsqueeze(0)
+
+        probs = torch.softmax(logits, dim=1)
 
         prob_values = probs.squeeze(0).cpu().numpy()
 
@@ -138,12 +107,12 @@ class ClassificationService:
         probability = float(prob_values[class_id])
 
         probabilities = {
-            CLASS_NAMES[i]: float(prob_values[i])
-            for i in range(NUM_CLASSES)
+            CLASS_NAMES.get(i, f"Class_{i}"): float(prob_values[i])
+            for i in range(len(prob_values))
         }
 
         return {
-            "prediction": CLASS_NAMES[class_id],
+            "prediction": CLASS_NAMES.get(class_id, f"Class_{class_id}"),
             "class_id": class_id,
             "probability": probability,
             "confidence": probability * 100,
@@ -159,9 +128,8 @@ class ClassificationService:
         results = []
 
         for roi in rois:
-            results.append(
-                self.predict(roi)
-            )
+            results.append(self.predict(roi))
 
         return results
+
 

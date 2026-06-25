@@ -82,12 +82,22 @@ if uploaded_file is not None:
     if st.button("Run AI Analysis", type="primary"):
 
         with st.spinner("Running full AI pipeline..."):
+            try:
+                result = pipeline.predict(
+                    image=image_np,
+                    patient_id=patient_id,
+                    generate_report=generate_report,
+                )
+            except Exception as exc:
+                st.error(f"AI pipeline failed: {exc}")
+                result = None
 
-            result = pipeline.predict(
-                image=image_np,
-                patient_id=patient_id,
-                generate_report=generate_report,
-            )
+        if result is None:
+            st.stop()
+
+        if result.get("status") == "error":
+            st.error(f"Inference failed: {result.get('error')}")
+            st.stop()
 
         st.success("Analysis Completed")
 
@@ -157,11 +167,15 @@ if uploaded_file is not None:
                 use_container_width=True,
             )
 
-            st.image(
-                result["roi_overlay"],
-                caption="Detected ROI Bounding Box",
-                use_container_width=True,
-            )
+            roi_overlay = result.get("roi_overlay")
+            if roi_overlay is not None:
+                st.image(
+                    roi_overlay,
+                    caption="Detected ROI Bounding Box",
+                    use_container_width=True,
+                )
+            else:
+                st.info("ROI overlay unavailable.")
 
         with tab3:
             st.image(
@@ -173,11 +187,14 @@ if uploaded_file is not None:
             st.write("Bounding Box:", result["bbox"])
 
         with tab4:
-            st.image(
-                result["heatmap"],
-                caption="Grad-CAM++ Explainability Heatmap",
-                use_container_width=True,
-            )
+            if result["heatmap"] is not None:
+                st.image(
+                    result["heatmap"],
+                    caption="Grad-CAM++ Explainability Heatmap",
+                    use_container_width=True,
+                )
+            else:
+                st.info("Grad-CAM++ explainability heatmap was unavailable.")
 
         with tab5:
             st.json(

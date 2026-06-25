@@ -177,27 +177,30 @@ class ReportService:
         story.append(Spacer(1, 14))
 
         if heatmap is not None:
-            heatmap_path = self._save_temp_image(
-                heatmap,
-                f"report_heatmap_{timestamp}.png",
-            )
-
-            story.append(
-                Paragraph(
-                    "Explainability Heatmap",
-                    self.section_style,
+            try:
+                heatmap_path = self._save_temp_image(
+                    heatmap,
+                    f"report_heatmap_{timestamp}.png",
                 )
-            )
 
-            story.append(
-                ReportImage(
-                    str(heatmap_path),
-                    width=4.8 * inch,
-                    height=4.8 * inch,
+                story.append(
+                    Paragraph(
+                        "Explainability Heatmap",
+                        self.section_style,
+                    )
                 )
-            )
 
-            story.append(Spacer(1, 14))
+                story.append(
+                    ReportImage(
+                        str(heatmap_path),
+                        width=4.8 * inch,
+                        height=4.8 * inch,
+                    )
+                )
+
+                story.append(Spacer(1, 14))
+            except Exception as exc:
+                print(f"[WARNING] Could not attach heatmap to report: {exc}")
 
         story.append(
             Paragraph(
@@ -216,7 +219,12 @@ class ReportService:
             )
         )
 
-        doc.build(story)
+        try:
+            doc.build(story)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to build report PDF at {report_path}: {exc}"
+            ) from exc
 
         return str(report_path)
 
@@ -253,16 +261,33 @@ class ReportService:
     ) -> Path:
 
         path = self.output_dir / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        if image is None:
+            raise ValueError("No image provided to save.")
 
         img = image.copy()
 
+        # Normalize float images
         if img.dtype != np.uint8:
-            img = np.clip(img, 0, 255).astype(np.uint8)
+            try:
+                img = np.clip(img, 0.0, 1.0)
+                img = (img * 255).astype(np.uint8)
+            except Exception:
+                img = np.clip(img, 0, 255).astype(np.uint8)
 
-        if img.ndim == 3:
-            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        # Ensure correct color ordering for cv2
+        if img.ndim == 2:
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        elif img.ndim == 3 and img.shape[2] == 3:
+            # ReportLab expects files on disk; cv2.imwrite wants BGR
+            try:
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            except Exception:
+                pass
 
-        cv2.imwrite(str(path), img)
+        if not cv2.imwrite(str(path), img):
+            raise IOError(f"Failed to save heatmap image to {path}")
 
         return path
 

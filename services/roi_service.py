@@ -186,9 +186,20 @@ class ROIService:
     ) -> np.ndarray:
 
         if image.ndim == 2:
-            image = cv2.cvtColor(
+            return cv2.cvtColor(
                 image,
                 cv2.COLOR_GRAY2RGB
+            )
+
+        if image.ndim == 3 and image.shape[2] == 4:
+            return cv2.cvtColor(
+                image,
+                cv2.COLOR_RGBA2RGB
+            )
+
+        if image.ndim != 3 or image.shape[2] != 3:
+            raise ValueError(
+                f"Unsupported image shape for ROI extraction: {image.shape}."
             )
 
         return image

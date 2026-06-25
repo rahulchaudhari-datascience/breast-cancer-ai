@@ -15,7 +15,10 @@ from torch.utils.data import Dataset, DataLoader
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
-import timm
+
+from services.model_builder import build_classification_model
+from services.preprocessing_service import PreprocessingService
+from utils.metrics_utils import MetricsUtils
 
 from config import (
     DEVICE,
@@ -30,9 +33,6 @@ from config import (
     CHECKPOINT_DIR,
     CONVNEXT_CHECKPOINT,
 )
-
-from services.preprocessing_service import PreprocessingService
-from utils.metrics_utils import MetricsUtils
 
 
 class MammogramClassificationDataset(Dataset):
@@ -143,19 +143,18 @@ class TrainingPipeline:
             T_max=EPOCHS,
         )
 
+        self.pin_memory = torch.cuda.is_available()
+
         CHECKPOINT_DIR.mkdir(
             parents=True,
             exist_ok=True,
         )
 
     def _build_model(self) -> nn.Module:
-        model = timm.create_model(
-            self.model_name,
-            pretrained=True,
+        return build_classification_model(
+            model_name=self.model_name,
             num_classes=NUM_CLASSES,
         )
-
-        return model
 
     def create_loaders(
         self,
@@ -163,8 +162,21 @@ class TrainingPipeline:
         val_csv: str,
     ) -> Tuple[DataLoader, DataLoader]:
 
+        train_csv = Path(train_csv)
+        val_csv = Path(val_csv)
+
+        if not train_csv.exists():
+            raise FileNotFoundError(f"Training CSV not found: {train_csv}")
+        if not val_csv.exists():
+            raise FileNotFoundError(f"Validation CSV not found: {val_csv}")
+
         train_df = pd.read_csv(train_csv)
         val_df = pd.read_csv(val_csv)
+
+        if "image_path" not in train_df.columns or "label" not in train_df.columns:
+            raise ValueError("Train CSV must contain 'image_path' and 'label' columns.")
+        if "image_path" not in val_df.columns or "label" not in val_df.columns:
+            raise ValueError("Val CSV must contain 'image_path' and 'label' columns.")
 
         train_dataset = MammogramClassificationDataset(
             train_df,
@@ -176,12 +188,17 @@ class TrainingPipeline:
             training=False,
         )
 
+        if len(train_dataset) == 0:
+            raise ValueError("Training dataset is empty. Check train CSV and file paths.")
+        if len(val_dataset) == 0:
+            raise ValueError("Validation dataset is empty. Check validation CSV and file paths.")
+
         train_loader = DataLoader(
             train_dataset,
             batch_size=BATCH_SIZE,
             shuffle=True,
             num_workers=NUM_WORKERS,
-            pin_memory=True,
+            pin_memory=self.pin_memory,
         )
 
         val_loader = DataLoader(
@@ -189,7 +206,7 @@ class TrainingPipeline:
             batch_size=BATCH_SIZE,
             shuffle=False,
             num_workers=NUM_WORKERS,
-            pin_memory=True,
+            pin_memory=self.pin_memory,
         )
 
         return train_loader, val_loader

@@ -116,6 +116,11 @@ NNUNET_CHECKPOINT = (
     "nnunet_best.pth"
 )
 
+UNETPP_CHECKPOINT = (
+    CHECKPOINT_DIR /
+    "unetpp_best.pth"
+)
+
 CONVNEXT_CHECKPOINT = (
     CHECKPOINT_DIR /
     "convnextv2_best.pth"

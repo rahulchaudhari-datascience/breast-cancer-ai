@@ -92,4 +92,11 @@ tensorboard
 
 einops
 
+# API
+fastapi
+uvicorn[standard]
+python-multipart
+requests
+pytest
+
 
