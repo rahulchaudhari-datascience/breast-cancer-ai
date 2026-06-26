@@ -53,7 +53,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # IMAGE CONFIGURATION
 # =====================================================
 
-IMAGE_SIZE = 512
+IMAGE_SIZE = 224
 
 NUM_CHANNELS = 3
 
@@ -61,15 +61,26 @@ NUM_CHANNELS = 3
 # TRAINING CONFIGURATION
 # =====================================================
 
+# Training batch size used for Kaggle T4 / Colab
 BATCH_SIZE = 16
 
 NUM_WORKERS = 4
 
+
 EPOCHS = 30
 
-LEARNING_RATE = 3e-5
+LEARNING_RATE = 1e-4
 
 WEIGHT_DECAY = 1e-4
+
+# Early stopping patience (epochs)
+EARLY_STOPPING_PATIENCE = 5
+
+# Use pretrained weights for both classification and encoder backbones
+PRETRAINED = True
+
+# Encoder weights identifier for segmentation models (e.g. 'imagenet' or None)
+ENCODER_WEIGHTS = "imagenet"
 
 RANDOM_SEED = 42
 
@@ -124,6 +135,11 @@ UNETPP_CHECKPOINT = (
 CONVNEXT_CHECKPOINT = (
     CHECKPOINT_DIR /
     "convnextv2_best.pth"
+)
+
+EFFICIENTNET_CHECKPOINT = (
+    CHECKPOINT_DIR /
+    "efficientnet_b0_best.pth"
 )
 
 # =====================================================

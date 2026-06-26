@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Dict, Optional
+import logging
 
 import numpy as np
 import torch
@@ -15,35 +16,28 @@ from config import (
     DEVICE,
     NUM_CLASSES,
     CLASS_NAMES,
-    CONVNEXT_CHECKPOINT,
+    EFFICIENTNET_CHECKPOINT,
+    PRETRAINED,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ClassificationService:
-    """
-    ConvNeXt-V2 Tiny based classifier.
+    """EfficientNet-B0 based classifier wrapper.
 
-    Input:
-        ROI image: numpy RGB image
-
-    Output:
-        {
-            "prediction": "Benign" / "Malignant",
-            "class_id": int,
-            "probability": float,
-            "probabilities": dict,
-            "logits": tensor
-        }
+    Provides single-image and batch prediction utilities returning softmax
+    probabilities and a human-readable label.
     """
 
     def __init__(
         self,
         checkpoint_path: Optional[str] = None,
-        model_name: str = "convnextv2_tiny.fcmae_ft_in22k_in1k",
+        model_name: str = "efficientnet_b0",
     ):
         self.device = DEVICE
         self.model_name = model_name
-        self.checkpoint_path = checkpoint_path or str(CONVNEXT_CHECKPOINT)
+        self.checkpoint_path = checkpoint_path or str(EFFICIENTNET_CHECKPOINT)
 
         self.preprocessing = PreprocessingService()
         self.model = self._build_model()
@@ -52,33 +46,48 @@ class ClassificationService:
         self.model.eval()
 
     def _build_model(self) -> nn.Module:
+        # Use config.PRETRAINED by default; allow override in build call
         return build_classification_model(
             model_name=self.model_name,
             num_classes=NUM_CLASSES,
-            pretrained=False,
+            pretrained=PRETRAINED,
         )
 
     def _load_checkpoint(self):
         path = Path(self.checkpoint_path)
 
         if not path.exists():
-            print("[INFO] Classification checkpoint not found. Using untrained ConvNeXt model.")
+            logger.warning("Classification checkpoint not found at %s. Using model initialization (pretrained=%s).",
+                           path, PRETRAINED)
+            # If the model was created without ImageNet weights and a checkpoint
+            # is missing, attempt to fall back to ImageNet weights for better
+            # out-of-the-box performance.
+            if not PRETRAINED:
+                try:
+                    logger.info("Rebuilding model with ImageNet pretrained weights as fallback.")
+                    self.model = build_classification_model(
+                        model_name=self.model_name,
+                        num_classes=NUM_CLASSES,
+                        pretrained=True,
+                    ).to(self.device)
+                except Exception:
+                    logger.exception("Fallback to ImageNet pretrained model failed.")
             return
 
         try:
-            checkpoint = torch.load(
-                path,
-                map_location=self.device,
-            )
+            checkpoint = torch.load(path, map_location=self.device)
 
             if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
-                self.model.load_state_dict(checkpoint["model_state_dict"])
+                state = checkpoint["model_state_dict"]
+            elif isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+                state = checkpoint["state_dict"]
             else:
-                self.model.load_state_dict(checkpoint)
+                state = checkpoint
 
-            print(f"[INFO] Loaded classification checkpoint: {path}")
+            self.model.load_state_dict(state)
+            logger.info("Loaded classification checkpoint: %s", path)
         except Exception as exc:
-            print(f"[WARNING] Failed to load classification checkpoint: {exc}. Using model weights as initialized.")
+            logger.exception("Failed to load classification checkpoint '%s': %s. Using initialized weights.", path, exc)
 
     def preprocess_roi(
         self,

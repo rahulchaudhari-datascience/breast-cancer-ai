@@ -31,7 +31,9 @@ from config import (
     NUM_CLASSES,
     CLASS_NAMES,
     CHECKPOINT_DIR,
-    CONVNEXT_CHECKPOINT,
+    EFFICIENTNET_CHECKPOINT,
+    PRETRAINED,
+    EARLY_STOPPING_PATIENCE,
 )
 
 
@@ -110,19 +112,15 @@ class FocalLoss(nn.Module):
 
 
 class TrainingPipeline:
-    """
-    ConvNeXt-V2 classification training pipeline.
+    """EfficientNet-B0 classification training pipeline with mixed precision.
 
-    Trains:
-        Benign vs Malignant classifier
-
-    Saves:
-        models/checkpoints/convnextv2_best.pth
+    Trains Benign vs Malignant classifier and saves the best checkpoint to
+    `EFFICIENTNET_CHECKPOINT`.
     """
 
     def __init__(
         self,
-        model_name: str = "convnextv2_tiny.fcmae_ft_in22k_in1k",
+        model_name: str = "efficientnet_b0",
     ):
         self.device = DEVICE
         self.model_name = model_name
@@ -145,15 +143,16 @@ class TrainingPipeline:
 
         self.pin_memory = torch.cuda.is_available()
 
-        CHECKPOINT_DIR.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
+        # AMP scaler for mixed-precision
+        self.scaler = torch.cuda.amp.GradScaler(enabled=torch.cuda.is_available())
+
+        CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
 
     def _build_model(self) -> nn.Module:
         return build_classification_model(
             model_name=self.model_name,
             num_classes=NUM_CLASSES,
+            pretrained=PRETRAINED,
         )
 
     def create_loaders(
@@ -224,24 +223,15 @@ class TrainingPipeline:
 
         best_auc = 0.0
         best_metrics = {}
+        early_stop_counter = 0
 
-        history = {
-            "train_loss": [],
-            "val_loss": [],
-            "val_auc": [],
-        }
+        history = {"train_loss": [], "val_loss": [], "val_auc": []}
 
         for epoch in range(EPOCHS):
 
-            train_loss = self._train_one_epoch(
-                train_loader,
-                epoch,
-            )
+            train_loss = self._train_one_epoch(train_loader, epoch)
 
-            val_loss, metrics = self._validate(
-                val_loader,
-                epoch,
-            )
+            val_loss, metrics = self._validate(val_loader, epoch)
 
             self.scheduler.step()
 
@@ -262,35 +252,29 @@ class TrainingPipeline:
             if current_auc > best_auc:
                 best_auc = current_auc
                 best_metrics = metrics
+                early_stop_counter = 0
 
-                self.save_checkpoint(
-                    epoch=epoch,
-                    metrics=metrics,
-                    path=CONVNEXT_CHECKPOINT,
-                )
-
+                self.save_checkpoint(epoch=epoch, metrics=metrics, path=EFFICIENTNET_CHECKPOINT)
                 print("[INFO] Best model saved.")
+            else:
+                early_stop_counter += 1
 
-        return {
-            "best_auc": best_auc,
-            "best_metrics": best_metrics,
-            "history": history,
-        }
+            if early_stop_counter >= EARLY_STOPPING_PATIENCE:
+                print(f"Early stopping triggered (no improvement for {EARLY_STOPPING_PATIENCE} epochs).")
+                break
+
+        return {"best_auc": best_auc, "best_metrics": best_metrics, "history": history}
 
     def _train_one_epoch(
         self,
         loader: DataLoader,
         epoch: int,
     ) -> float:
-
         self.model.train()
 
         running_loss = 0.0
 
-        progress = tqdm(
-            loader,
-            desc=f"Training Epoch {epoch + 1}",
-        )
+        progress = tqdm(loader, desc=f"Training Epoch {epoch + 1}")
 
         for images, labels in progress:
 
@@ -299,27 +283,20 @@ class TrainingPipeline:
 
             self.optimizer.zero_grad()
 
-            logits = self.model(images)
+            with torch.cuda.amp.autocast(enabled=torch.cuda.is_available()):
+                logits = self.model(images)
+                loss = self.criterion(logits, labels)
 
-            loss = self.criterion(
-                logits,
-                labels,
-            )
+            self.scaler.scale(loss).backward()
 
-            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
 
-            torch.nn.utils.clip_grad_norm_(
-                self.model.parameters(),
-                max_norm=1.0,
-            )
-
-            self.optimizer.step()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
 
             running_loss += loss.item()
 
-            progress.set_postfix(
-                loss=loss.item()
-            )
+            progress.set_postfix(loss=loss.item())
 
         return running_loss / len(loader)
 
@@ -348,36 +325,19 @@ class TrainingPipeline:
             images = images.to(self.device)
             labels = labels.to(self.device)
 
-            logits = self.model(images)
+            with torch.no_grad():
+                with torch.cuda.amp.autocast(enabled=torch.cuda.is_available()):
+                    logits = self.model(images)
+                    loss = self.criterion(logits, labels)
 
-            loss = self.criterion(
-                logits,
-                labels,
-            )
-
-            probs = torch.softmax(
-                logits,
-                dim=1,
-            )
-
-            preds = torch.argmax(
-                probs,
-                dim=1,
-            )
+                    probs = torch.softmax(logits, dim=1)
+                    preds = torch.argmax(probs, dim=1)
 
             running_loss += loss.item()
 
-            y_true.extend(
-                labels.cpu().numpy().tolist()
-            )
-
-            y_pred.extend(
-                preds.cpu().numpy().tolist()
-            )
-
-            y_prob.extend(
-                probs[:, 1].cpu().numpy().tolist()
-            )
+            y_true.extend(labels.cpu().numpy().tolist())
+            y_pred.extend(preds.cpu().numpy().tolist())
+            y_prob.extend(probs[:, 1].cpu().numpy().tolist())
 
         metrics = MetricsUtils.classification_metrics(
             y_true=y_true,
