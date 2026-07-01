@@ -370,14 +370,18 @@ class TrainingPipeline:
         )
 
 
+def run_kaggle_training(
+    train_csv: str = "datasets/annotations/train.csv",
+    val_csv: str = "datasets/annotations/val.csv",
+    model_name: str = "efficientnet_b0",
+):
+    """Convenience entry point for Kaggle / Colab training runs."""
+    pipeline = TrainingPipeline(model_name=model_name)
+    return pipeline.train(train_csv=train_csv, val_csv=val_csv)
+
+
 if __name__ == "__main__":
-    pipeline = TrainingPipeline()
-
-    results = pipeline.train(
-        train_csv="datasets/annotations/train.csv",
-        val_csv="datasets/annotations/val.csv",
-    )
-
+    results = run_kaggle_training()
     print(results)
 
 

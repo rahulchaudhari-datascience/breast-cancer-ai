@@ -29,9 +29,9 @@ Results, Reports, Heatmaps
    pip install -r requirements.txt
    ```
 
-2. **Download trained models from Colab:**
-   - See [Training in Google Colab](#training-in-google-colab) below
-   - Download `classification_model.pth` and `segmentation_model.pth` to `./models/`
+2. **Download trained models from Colab or Kaggle:**
+   - See [Training in Google Colab / Kaggle](#training-in-google-colab--kaggle) below
+   - Download `classification_best.pth` and `unetpp_best.pth` to `./models/checkpoints/`
 
 3. **Run Streamlit:**
    ```bash
@@ -68,7 +68,7 @@ docker-compose up --build
 
 ---
 
-## Training in Google Colab
+## Training in Google Colab / Kaggle
 
 1. **Open the training notebook:**
    - See `notebooks/colab_training.ipynb` (template included in this repo)
@@ -79,13 +79,13 @@ docker-compose up --build
    - Upload your dataset (mammograms + masks + labels CSV)
    - Install dependencies (pytorch, timm, albumentations, etc.)
    - Train U-Net++ segmentation model
-   - Train ConvNeXt-Tiny classification model
-   - Save trained models to Google Drive
+   - Train EfficientNet-B0 classification model
+   - Save trained checkpoints to Google Drive or Kaggle output
    ```
 
 3. **Download models locally:**
-   - Download `classification_model.pth` and `segmentation_model.pth` from Google Drive
-   - Place in `./models/` folder
+   - Download `classification_best.pth` and `unetpp_best.pth` from Google Drive / Kaggle output
+   - Place in `./models/checkpoints/` folder
 
 4. **Run inference locally** (see Quick Start above)
 
@@ -152,8 +152,8 @@ breast-cancer-ai/
 
 ### Architecture
 
-- **Segmentation:** U-Net++ (encoder-decoder, no pretrained weights)
-- **Classification:** ConvNeXt-Tiny (local construction, no pretrained weights)
+- **Segmentation:** U-Net++
+- **Classification:** EfficientNet-B0 (pretrained backbone, Kaggle-friendly)
 - **Explainability:** Grad-CAM++
 - **Confidence:** Uncertainty estimation + multi-source confidence fusion
 

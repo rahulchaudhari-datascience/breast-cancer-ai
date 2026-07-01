@@ -7,14 +7,14 @@ import torch.nn as nn
 import timm
 from segmentation_models_pytorch import UnetPlusPlus
 
-from config import PRETRAINED, ENCODER_WEIGHTS
+from config import PRETRAINED, ENCODER_WEIGHTS, CLASSIFICATION_MODEL_NAME
 
 logger = logging.getLogger(__name__)
 
 
 def build_classification_model(
-    model_name: str,
-    num_classes: int,
+    model_name: Optional[str] = None,
+    num_classes: int = 2,
     pretrained: Optional[bool] = None,
 ) -> nn.Module:
     """Create a classification model using `timm.create_model`.
@@ -27,6 +27,7 @@ def build_classification_model(
     Returns:
         nn.Module instantiation of the model.
     """
+    model_name = model_name or CLASSIFICATION_MODEL_NAME
     use_pretrained = PRETRAINED if pretrained is None else bool(pretrained)
 
     try:

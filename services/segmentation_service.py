@@ -13,6 +13,7 @@ from config import (
     DEVICE,
     SEGMENTATION_THRESHOLD,
     UNETPP_CHECKPOINT,
+    MASK_OUTPUT_DIR,
 )
 
 
@@ -49,6 +50,7 @@ class SegmentationService:
             checkpoint_path
             or str(UNETPP_CHECKPOINT)
         )
+        MASK_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         self.encoder_name = encoder_name
         self.in_channels = in_channels
         self.classes = classes
@@ -147,8 +149,9 @@ class SegmentationService:
             mask = mask[0]
 
         mask = (mask * 255).astype(np.uint8)
-
-        return self.postprocess(mask)
+        mask = self.postprocess(mask)
+        self._save_mask(mask)
+        return mask
 
     # =====================================================
     # POSTPROCESSING
@@ -204,6 +207,12 @@ class SegmentationService:
         )
 
         return clean_mask
+
+    def _save_mask(self, mask: np.ndarray, filename: Optional[str] = None) -> Path:
+        save_path = MASK_OUTPUT_DIR / (filename or "segmentation_mask.png")
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(save_path), mask)
+        return save_path
 
     # =====================================================
     # FALLBACK
@@ -283,4 +292,10 @@ class SegmentationService:
         )
 
         return overlay
+
+    def _save_mask(self, mask: np.ndarray, filename: Optional[str] = None) -> Path:
+        save_path = MASK_OUTPUT_DIR / (filename or "segmentation_mask.png")
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(save_path), mask)
+        return save_path
 

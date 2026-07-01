@@ -83,28 +83,22 @@ print("Segmentation training complete!")
 print(seg_metrics)
 ```
 
-### Classification Training (ConvNeXt-Tiny)
+### Classification Training (EfficientNet-B0)
 
 ```python
-from pipelines.training_pipeline import ClassificationTrainingPipeline
+import sys
+sys.path.insert(0, '/content/drive/MyDrive/breast-cancer-ai')
 
-# Initialize pipeline
-cls_pipeline = ClassificationTrainingPipeline(
-    model_save_dir='/content/drive/MyDrive/breast-cancer-ai/models',
-    batch_size=8,
-    epochs=100,
-)
+from pipelines.training_pipeline import run_kaggle_training
 
-# Train classification model
-cls_metrics = cls_pipeline.train(
-    csv_path='datasets/annotations/labels.csv',
-    images_dir='datasets/raw',
-    validation_split=0.2,
-    early_stopping_patience=15,
+results = run_kaggle_training(
+    train_csv='datasets/annotations/train.csv',
+    val_csv='datasets/annotations/val.csv',
+    model_name='efficientnet_b0',
 )
 
 print("Classification training complete!")
-print(cls_metrics)
+print(results)
 ```
 
 ---

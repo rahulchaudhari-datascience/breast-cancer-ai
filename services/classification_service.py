@@ -18,6 +18,7 @@ from config import (
     CLASS_NAMES,
     EFFICIENTNET_CHECKPOINT,
     PRETRAINED,
+    CLASSIFICATION_MODEL_NAME,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,10 +34,10 @@ class ClassificationService:
     def __init__(
         self,
         checkpoint_path: Optional[str] = None,
-        model_name: str = "efficientnet_b0",
+        model_name: Optional[str] = None,
     ):
         self.device = DEVICE
-        self.model_name = model_name
+        self.model_name = model_name or CLASSIFICATION_MODEL_NAME
         self.checkpoint_path = checkpoint_path or str(EFFICIENTNET_CHECKPOINT)
 
         self.preprocessing = PreprocessingService()

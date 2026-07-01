@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import torch
 
@@ -7,11 +8,15 @@ import torch
 
 ROOT_DIR = Path(__file__).resolve().parent
 
+# Kaggle / Colab friendly overrides
+DATASET_ROOT = os.getenv("DATASET_ROOT") or os.getenv("KAGGLE_DATASET_PATH") or ""
+OUTPUT_ROOT = os.getenv("OUTPUT_ROOT") or os.getenv("KAGGLE_WORKING_DIR") or ""
+
 # =====================================================
 # DATASET PATHS
 # =====================================================
 
-DATASETS_DIR = ROOT_DIR / "datasets"
+DATASETS_DIR = Path(DATASET_ROOT).expanduser().resolve() if DATASET_ROOT else (ROOT_DIR / "datasets")
 
 RAW_DATA_DIR = DATASETS_DIR / "raw"
 PROCESSED_DATA_DIR = DATASETS_DIR / "processed"
@@ -35,7 +40,7 @@ CHECKPOINT_DIR = MODELS_DIR / "checkpoints"
 # OUTPUT PATHS
 # =====================================================
 
-OUTPUTS_DIR = ROOT_DIR / "outputs"
+OUTPUTS_DIR = Path(OUTPUT_ROOT).expanduser().resolve() / "outputs" if OUTPUT_ROOT else (ROOT_DIR / "outputs")
 
 MASK_OUTPUT_DIR = OUTPUTS_DIR / "masks"
 HEATMAP_OUTPUT_DIR = OUTPUTS_DIR / "heatmaps"
@@ -78,6 +83,9 @@ EARLY_STOPPING_PATIENCE = 5
 
 # Use pretrained weights for both classification and encoder backbones
 PRETRAINED = True
+
+# Default classification backbone for Kaggle / local training
+CLASSIFICATION_MODEL_NAME = "convnext_tiny"
 
 # Encoder weights identifier for segmentation models (e.g. 'imagenet' or None)
 ENCODER_WEIGHTS = "imagenet"
@@ -137,10 +145,12 @@ CONVNEXT_CHECKPOINT = (
     "convnextv2_best.pth"
 )
 
-EFFICIENTNET_CHECKPOINT = (
+CLASSIFICATION_CHECKPOINT = (
     CHECKPOINT_DIR /
-    "efficientnet_b0_best.pth"
+    "classification_best.pth"
 )
+
+EFFICIENTNET_CHECKPOINT = CLASSIFICATION_CHECKPOINT
 
 # =====================================================
 # CREATE DIRECTORIES

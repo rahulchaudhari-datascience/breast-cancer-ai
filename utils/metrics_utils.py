@@ -10,7 +10,6 @@ from sklearn.metrics import (
     roc_auc_score,
     confusion_matrix,
     classification_report,
-    roc_curve,
 )
 
 
@@ -30,13 +29,16 @@ class MetricsUtils:
             raise ValueError("Empty y_true or y_pred passed to classification_metrics.")
 
         metrics: Dict[str, Any] = {}
+        y_true_arr = np.asarray(y_true)
+        y_pred_arr = np.asarray(y_pred)
 
-        metrics["accuracy"] = float(accuracy_score(y_true, y_pred))
-        metrics["precision"] = float(precision_score(y_true, y_pred, zero_division=0))
-        metrics["recall"] = float(recall_score(y_true, y_pred, zero_division=0))
-        metrics["f1_score"] = float(f1_score(y_true, y_pred, zero_division=0))
+        metrics["accuracy"] = float(accuracy_score(y_true_arr, y_pred_arr))
+        metrics["precision"] = float(precision_score(y_true_arr, y_pred_arr, zero_division=0))
+        metrics["recall"] = float(recall_score(y_true_arr, y_pred_arr, zero_division=0))
+        metrics["sensitivity"] = metrics["recall"]
+        metrics["f1_score"] = float(f1_score(y_true_arr, y_pred_arr, zero_division=0))
 
-        cm = confusion_matrix(y_true, y_pred)
+        cm = confusion_matrix(y_true_arr, y_pred_arr)
         metrics["confusion_matrix"] = cm.tolist()
 
         if cm.shape == (2, 2):
@@ -49,12 +51,12 @@ class MetricsUtils:
 
         if y_prob is not None:
             try:
-                metrics["roc_auc"] = float(roc_auc_score(y_true, y_prob))
+                metrics["roc_auc"] = float(roc_auc_score(y_true_arr, y_prob))
             except Exception:
                 metrics["roc_auc"] = 0.0
 
         try:
-            metrics["classification_report"] = classification_report(y_true, y_pred, output_dict=True)
+            metrics["classification_report"] = classification_report(y_true_arr, y_pred_arr, output_dict=True)
         except Exception:
             metrics["classification_report"] = {}
 

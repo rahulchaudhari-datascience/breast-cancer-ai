@@ -32,52 +32,54 @@ class PreprocessingService:
     ):
 
         self.image_size = image_size
+        self.normalize_mean = (0.485, 0.456, 0.406)
+        self.normalize_std = (0.229, 0.224, 0.225)
 
-        self.train_transform = A.Compose([
+        self.train_transform = self._build_train_transform(image_size)
+        self.val_transform = self._build_val_transform(image_size)
+        self.model_transform = self._build_model_transform(image_size)
+
+    def _build_train_transform(self, image_size: int) -> A.Compose:
+        return A.Compose([
             A.HorizontalFlip(p=0.5),
-
-            A.Rotate(
-                limit=15,
+            A.VerticalFlip(p=0.25),
+            A.ShiftScaleRotate(
+                shift_limit=0.05,
+                scale_limit=0.1,
+                rotate_limit=15,
                 border_mode=cv2.BORDER_CONSTANT,
-                p=0.5
+                p=0.5,
             ),
-
             A.RandomBrightnessContrast(
                 brightness_limit=0.15,
                 contrast_limit=0.15,
-                p=0.5
+                p=0.5,
             ),
-
-            A.GaussNoise(
-                p=0.2
+            A.GaussNoise(var_limit=(10.0, 50.0), p=0.2),
+            A.CoarseDropout(
+                max_holes=6,
+                max_height=16,
+                max_width=16,
+                fill_value=0,
+                p=0.15,
             ),
-
-            A.Resize(
-                image_size,
-                image_size
-            ),
-
-            A.Normalize(
-                mean=(0.485, 0.456, 0.406),
-                std=(0.229, 0.224, 0.225)
-            ),
-
-            ToTensorV2()
+            A.Resize(image_size, image_size),
+            A.Normalize(mean=self.normalize_mean, std=self.normalize_std),
+            ToTensorV2(),
         ])
 
-        self.val_transform = A.Compose([
+    def _build_val_transform(self, image_size: int) -> A.Compose:
+        return A.Compose([
+            A.Resize(image_size, image_size),
+            A.Normalize(mean=self.normalize_mean, std=self.normalize_std),
+            ToTensorV2(),
+        ])
 
-            A.Resize(
-                image_size,
-                image_size
-            ),
-
-            A.Normalize(
-                mean=(0.485, 0.456, 0.406),
-                std=(0.229, 0.224, 0.225)
-            ),
-
-            ToTensorV2()
+    def _build_model_transform(self, image_size: int) -> A.Compose:
+        return A.Compose([
+            A.Resize(image_size, image_size),
+            A.Normalize(mean=self.normalize_mean, std=self.normalize_std),
+            ToTensorV2(),
         ])
 
     # -------------------------------------------------
@@ -123,18 +125,17 @@ class PreprocessingService:
         image_size: Optional[int] = None,
     ) -> torch.Tensor:
         image = self.ensure_rgb(image)
+        image = self.remove_artifacts(image)
+        image = self.extract_breast_region(image)
+        image = self.apply_clahe(image)
+        image = self.zscore_normalization(image)
 
         size = image_size or self.image_size
-        image = cv2.resize(image, (size, size))
-        image = image.astype(np.float32) / 255.0
+        transformed = self.model_transform(image=image)["image"]
+        if isinstance(transformed, torch.Tensor):
+            return transformed.unsqueeze(0)
 
-        mean = np.array((0.485, 0.456, 0.406), dtype=np.float32)
-        std = np.array((0.229, 0.224, 0.225), dtype=np.float32)
-
-        image = (image - mean) / std
-
-        tensor = torch.from_numpy(image.transpose(2, 0, 1)).float()
-        return tensor.unsqueeze(0)
+        return torch.from_numpy(np.asarray(transformed)).float().unsqueeze(0)
 
     def ensure_rgb(
         self,
