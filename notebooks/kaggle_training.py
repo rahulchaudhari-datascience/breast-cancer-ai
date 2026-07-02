@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 import sys
@@ -17,17 +18,36 @@ os.environ.setdefault("OUTPUT_ROOT", os.getenv("OUTPUT_ROOT", ""))
 from pipelines.training_pipeline import run_kaggle_training
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run breast cancer training on Kaggle or local dataset.")
+    parser.add_argument(
+        "--dataset-root",
+        type=Path,
+        default=Path(__file__).resolve().parents[1] / "datasets",
+        help="Root folder containing annotations/train.csv and annotations/val.csv.",
+    )
+    parser.add_argument(
+        "--output-root",
+        type=Path,
+        default=Path(__file__).resolve().parents[1] / "outputs",
+        help="Output folder for training summary and artifacts.",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
-    dataset_root = os.getenv("DATASET_ROOT", "").strip()
-    output_root = os.getenv("OUTPUT_ROOT", "").strip()
+    args = parse_args()
+
+    dataset_root = os.getenv("DATASET_ROOT", str(args.dataset_root)).strip()
+    output_root = os.getenv("OUTPUT_ROOT", str(args.output_root)).strip()
 
     if not dataset_root:
         raise RuntimeError(
-            "Please set DATASET_ROOT to your Kaggle dataset folder, e.g. /kaggle/input/your-dataset"
+            "Please set DATASET_ROOT to your dataset folder or provide --dataset-root."
         )
 
     if not output_root:
-        output_root = "/kaggle/working"
+        output_root = str(Path(__file__).resolve().parents[1] / "outputs")
         os.environ["OUTPUT_ROOT"] = output_root
 
     train_csv = str(Path(dataset_root) / "annotations" / "train.csv")

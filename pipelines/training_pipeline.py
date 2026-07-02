@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Dict, Tuple
+import logging
 
 import cv2
 import numpy as np
@@ -12,6 +13,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
@@ -34,6 +36,8 @@ from config import (
     EFFICIENTNET_CHECKPOINT,
     PRETRAINED,
     EARLY_STOPPING_PATIENCE,
+    LOGS_DIR,
+    TENSORBOARD_DIR,
 )
 
 
@@ -146,7 +150,21 @@ class TrainingPipeline:
         # AMP scaler for mixed-precision
         self.scaler = torch.cuda.amp.GradScaler(enabled=torch.cuda.is_available())
 
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        TENSORBOARD_DIR.mkdir(parents=True, exist_ok=True)
         CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+            handlers=[
+                logging.StreamHandler(),
+                logging.FileHandler(LOGS_DIR / "training.log", encoding="utf-8"),
+            ],
+        )
+
+        self.writer = SummaryWriter(log_dir=TENSORBOARD_DIR)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def _build_model(self) -> nn.Module:
         return build_classification_model(
@@ -227,41 +245,56 @@ class TrainingPipeline:
 
         history = {"train_loss": [], "val_loss": [], "val_auc": []}
 
-        for epoch in range(EPOCHS):
+        try:
+            for epoch in range(EPOCHS):
 
-            train_loss = self._train_one_epoch(train_loader, epoch)
+                train_loss = self._train_one_epoch(train_loader, epoch)
 
-            val_loss, metrics = self._validate(val_loader, epoch)
+                val_loss, metrics = self._validate(val_loader, epoch)
 
-            self.scheduler.step()
+                self.scheduler.step()
 
-            history["train_loss"].append(train_loss)
-            history["val_loss"].append(val_loss)
-            history["val_auc"].append(metrics.get("roc_auc", 0.0))
+                history["train_loss"].append(train_loss)
+                history["val_loss"].append(val_loss)
+                history["val_auc"].append(metrics.get("roc_auc", 0.0))
 
-            print(
-                f"\nEpoch [{epoch + 1}/{EPOCHS}] "
-                f"Train Loss: {train_loss:.4f} "
-                f"Val Loss: {val_loss:.4f} "
-                f"AUC: {metrics.get('roc_auc', 0.0):.4f} "
-                f"F1: {metrics.get('f1_score', 0.0):.4f}"
-            )
+                self.writer.add_scalar("Loss/Train", train_loss, epoch)
+                self.writer.add_scalar("Loss/Val", val_loss, epoch)
+                self.writer.add_scalar("Metrics/AUC", metrics.get("roc_auc", 0.0), epoch)
+                self.writer.add_scalar("Metrics/F1", metrics.get("f1_score", 0.0), epoch)
+                self.writer.add_scalar("Metrics/Precision", metrics.get("precision", 0.0), epoch)
+                self.writer.add_scalar("Metrics/Recall", metrics.get("recall", 0.0), epoch)
+                self.writer.add_scalar("Metrics/Accuracy", metrics.get("accuracy", 0.0), epoch)
 
-            current_auc = metrics.get("roc_auc", 0.0)
+                print(
+                    f"\nEpoch [{epoch + 1}/{EPOCHS}] "
+                    f"Train Loss: {train_loss:.4f} "
+                    f"Val Loss: {val_loss:.4f} "
+                    f"AUC: {metrics.get('roc_auc', 0.0):.4f} "
+                    f"F1: {metrics.get('f1_score', 0.0):.4f}"
+                )
 
-            if current_auc > best_auc:
-                best_auc = current_auc
-                best_metrics = metrics
-                early_stop_counter = 0
+                current_auc = metrics.get("roc_auc", 0.0)
 
-                self.save_checkpoint(epoch=epoch, metrics=metrics, path=EFFICIENTNET_CHECKPOINT)
-                print("[INFO] Best model saved.")
-            else:
-                early_stop_counter += 1
+                if current_auc > best_auc:
+                    best_auc = current_auc
+                    best_metrics = metrics
+                    early_stop_counter = 0
 
-            if early_stop_counter >= EARLY_STOPPING_PATIENCE:
-                print(f"Early stopping triggered (no improvement for {EARLY_STOPPING_PATIENCE} epochs).")
-                break
+                    self.save_checkpoint(epoch=epoch, metrics=metrics, path=EFFICIENTNET_CHECKPOINT)
+                    print("[INFO] Best model saved.")
+                else:
+                    early_stop_counter += 1
+
+                if early_stop_counter >= EARLY_STOPPING_PATIENCE:
+                    print(f"Early stopping triggered (no improvement for {EARLY_STOPPING_PATIENCE} epochs).")
+                    break
+
+        finally:
+            try:
+                self.writer.close()
+            except Exception:
+                pass
 
         return {"best_auc": best_auc, "best_metrics": best_metrics, "history": history}
 

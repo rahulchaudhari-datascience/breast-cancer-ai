@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
-from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
+from sklearn.metrics import ConfusionMatrixDisplay, auc, confusion_matrix, roc_curve
 
 
 class VisualizationUtils:
@@ -49,11 +49,33 @@ class VisualizationUtils:
     def plot_confusion_matrix(
         y_true,
         y_pred,
+        output_path: str,
     ) -> None:
         cm = confusion_matrix(y_true, y_pred)
         disp = ConfusionMatrixDisplay(confusion_matrix=cm)
-        disp.plot()
-        plt.show()
+        disp.plot(cmap=plt.cm.Blues)
+        plt.title("Confusion Matrix")
+        plt.savefig(output_path, bbox_inches="tight")
+        plt.close()
+
+    @staticmethod
+    def plot_roc_curve(
+        y_true,
+        y_prob,
+        output_path: str,
+    ) -> None:
+        fpr, tpr, _ = roc_curve(y_true, y_prob)
+        roc_auc = auc(fpr, tpr)
+        plt.figure(figsize=(8, 6))
+        plt.plot(fpr, tpr, label=f"ROC AUC = {roc_auc:.4f}")
+        plt.plot([0, 1], [0, 1], linestyle="--", color="gray")
+        plt.xlabel("False Positive Rate")
+        plt.ylabel("True Positive Rate")
+        plt.title("ROC Curve")
+        plt.legend(loc="lower right")
+        plt.grid(True)
+        plt.savefig(output_path, bbox_inches="tight")
+        plt.close()
 
     @staticmethod
     def save_heatmap(

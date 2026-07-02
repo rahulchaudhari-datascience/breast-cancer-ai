@@ -47,6 +47,8 @@ HEATMAP_OUTPUT_DIR = OUTPUTS_DIR / "heatmaps"
 REPORT_OUTPUT_DIR = OUTPUTS_DIR / "reports"
 METRICS_OUTPUT_DIR = OUTPUTS_DIR / "metrics"
 PREDICTIONS_OUTPUT_DIR = OUTPUTS_DIR / "predictions"
+LOGS_DIR = OUTPUTS_DIR / "logs"
+TENSORBOARD_DIR = OUTPUTS_DIR / "tensorboard"
 
 # =====================================================
 # DEVICE CONFIGURATION
@@ -166,7 +168,9 @@ ALL_DIRS = [
     HEATMAP_OUTPUT_DIR,
     REPORT_OUTPUT_DIR,
     METRICS_OUTPUT_DIR,
-    PREDICTIONS_OUTPUT_DIR
+    PREDICTIONS_OUTPUT_DIR,
+    LOGS_DIR,
+    TENSORBOARD_DIR,
 ]
 
 for directory in ALL_DIRS:

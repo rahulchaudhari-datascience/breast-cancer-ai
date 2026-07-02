@@ -21,13 +21,15 @@ from config import (
     NUM_WORKERS,
     NUM_CLASSES,
     CLASS_NAMES,
-    CONVNEXT_CHECKPOINT,
+    CLASSIFICATION_CHECKPOINT,
+    CLASSIFICATION_MODEL_NAME,
     METRICS_OUTPUT_DIR,
     PREDICTIONS_OUTPUT_DIR,
 )
 
 from services.preprocessing_service import PreprocessingService
 from utils.metrics_utils import MetricsUtils
+from utils.visualization_utils import VisualizationUtils
 
 
 class MammogramEvaluationDataset(Dataset):
@@ -276,7 +278,22 @@ class EvaluationPipeline:
             index=False,
         )
 
-        print("\nEvaluation Metrics")
+        cm_path = METRICS_OUTPUT_DIR / f"{save_prefix}_confusion_matrix.png"
+        roc_path = METRICS_OUTPUT_DIR / f"{save_prefix}_roc_curve.png"
+
+        try:
+            VisualizationUtils.plot_confusion_matrix(y_true, y_pred, str(cm_path))
+            print(f"Confusion matrix saved to: {cm_path}")
+        except Exception as exc:
+            print(f"[WARNING] Could not save confusion matrix: {exc}")
+
+        try:
+            VisualizationUtils.plot_roc_curve(y_true, y_prob, str(roc_path))
+            print(f"ROC curve saved to: {roc_path}")
+        except Exception as exc:
+            print(f"[WARNING] Could not save ROC curve: {exc}")
+
+        print(f"\nEvaluation Metrics")
         print(metrics)
 
         print(f"\nPredictions saved to: {predictions_path}")
@@ -286,6 +303,8 @@ class EvaluationPipeline:
             "metrics": metrics,
             "predictions_path": str(predictions_path),
             "metrics_path": str(metrics_path),
+            "confusion_matrix_path": str(cm_path),
+            "roc_curve_path": str(roc_path),
         }
 
 
