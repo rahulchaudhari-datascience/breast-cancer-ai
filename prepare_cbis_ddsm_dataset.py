@@ -55,6 +55,12 @@ def parse_args() -> argparse.Namespace:
         help="Fraction of training data to reserve for validation.",
     )
 
+    parser.add_argument(
+        "--debug-resolver",
+        action="store_true",
+        help="Print resolver debug information for first rows (diagnostics).",
+    )
+
     return parser.parse_args()
 
 
@@ -100,7 +106,9 @@ class CBISDDMSplitter:
 
         self._ensure_roots()
         # Build image indices once (O(N_images))
-        self.name_map, self.rel_map = self._index_images()
+        self.name_map, self.rel_map, self.uid_map, self.stem_map = self._index_images()
+        # debug flag (can be set from CLI)
+        self.debug = False
 
     def _ensure_roots(self) -> None:
         if not self.csv_root.exists():
@@ -108,7 +116,7 @@ class CBISDDMSplitter:
         if not self.jpeg_root.exists():
             raise FileNotFoundError(f"JPEG directory not found: {self.jpeg_root}")
 
-    def _index_images(self) -> Tuple[Dict[str, List[Path]], Dict[str, Path]]:
+    def _index_images(self) -> Tuple[Dict[str, List[Path]], Dict[str, Path], Dict[str, Dict[str, List[Path]]], Dict[str, List[Path]]]:
         """Index all JPEG images under `jpeg_root`.
 
         Returns:
@@ -117,6 +125,10 @@ class CBISDDMSplitter:
         """
         name_map: Dict[str, List[Path]] = {}
         rel_map: Dict[str, Path] = {}
+        # uid_map: first relative directory -> filename -> list[Path]
+        uid_map: Dict[str, Dict[str, List[Path]]] = {}
+        # stem_map: filename stem -> list[Path]
+        stem_map: Dict[str, List[Path]] = {}
         self.logger.info("Indexing JPEG images under %s", self.jpeg_root)
         count = 0
         for path in self.jpeg_root.rglob("*"):
@@ -124,14 +136,21 @@ class CBISDDMSplitter:
                 count += 1
                 name = path.name.lower()
                 name_map.setdefault(name, []).append(path)
+                stem = path.stem.lower()
+                stem_map.setdefault(stem, []).append(path)
                 try:
                     rel = path.relative_to(self.jpeg_root).as_posix().lower()
                 except Exception:
                     rel = path.as_posix().lower()
                 rel_map[rel] = path
+                # uid part (first directory under jpeg/), if present
+                parts = rel.split("/")
+                if len(parts) > 1:
+                    uid = parts[0]
+                    uid_map.setdefault(uid, {}).setdefault(name, []).append(path)
 
         self.logger.info("Indexed %d image files", count)
-        return name_map, rel_map
+        return name_map, rel_map, uid_map, stem_map
 
     def _read_csv_files(self, filenames: List[str]) -> pd.DataFrame:
         rows: List[pd.DataFrame] = []
@@ -180,31 +199,108 @@ class CBISDDMSplitter:
                 out.append(c)
         return out
 
+    def _resolve_with_reason(self, value: str) -> Tuple[Optional[Path], str, Optional[str]]:
+        """Resolve image and return (path, reason, matched_candidate).
+
+        Tries direct candidates first, then a small set of transformed candidates
+        that handle common CBIS-DDSM naming differences. All lookups use dicts
+        built at indexing time (O(1) per candidate).
+        """
+        if not isinstance(value, str) or not value.strip():
+            return None, "empty_value", None
+
+        vraw = value.strip()
+        vpos = vraw.replace("\\", "/").lstrip("/").lower()
+
+        tested = []
+        # primary candidates
+        candidates = self._extract_image_candidates_from_value(vraw)
+        for cand in candidates:
+            tested.append(cand)
+            if cand in self.rel_map:
+                return self.rel_map[cand], f"rel_map exact match for '{cand}'", cand
+            if cand in self.name_map:
+                paths = self.name_map[cand]
+                if len(paths) == 1:
+                    return paths[0], f"unique name_map match for '{cand}'", cand
+                # try uid_map disambiguation
+                if "/" in vpos:
+                    uid = vpos.split("/")[0]
+                    fname = Path(vpos).name.lower()
+                    if uid in self.uid_map and fname in self.uid_map[uid]:
+                        return self.uid_map[uid][fname][0], f"uid_map disambiguation (uid={uid}) for '{cand}'", cand
+                # try stem_map unique
+                stem = Path(cand).stem.lower()
+                if stem in self.stem_map and len(self.stem_map[stem]) == 1:
+                    return self.stem_map[stem][0], f"stem_map unique for stem '{stem}'", cand
+                # fallback to first
+                return paths[0], f"fallback first name_map entry for '{cand}'", cand
+
+        # secondary transformed candidates (automatic fixes)
+        transforms: List[str] = []
+        # if absolute path contains 'jpeg/', extract rel part
+        if "jpeg/" in vpos:
+            idx = vpos.find("jpeg/")
+            rel = vpos[idx + len("jpeg/"):]
+            transforms.append(rel)
+        # replace dicom extension with .jpg/.jpeg
+        if vpos.endswith(".dcm"):
+            stem = vpos.rsplit('.', 1)[0]
+            transforms.extend([stem + ".jpg", stem + ".jpeg"])  # type: ignore[arg-type]
+        # try last two path components (uid/filename)
+        parts = vpos.split("/")
+        if len(parts) >= 2:
+            last_two = "/".join(parts[-2:])
+            transforms.append(last_two)
+        # try filename without leading numbers/prefix like '1-' or '2-'
+        filename = Path(vpos).name
+        filename_noprefix = re.sub(r'^\d+[-_.]', '', filename)
+        if filename_noprefix != filename:
+            transforms.append(filename_noprefix)
+        # try underscore/hyphen swap
+        if "_" in filename:
+            transforms.append(filename.replace("_", "-"))
+        if "-" in filename:
+            transforms.append(filename.replace("-", "_"))
+
+        # dedupe transforms
+        seen_t = set()
+        tlist = []
+        for t in transforms:
+            t = t.lower()
+            if t and t not in seen_t:
+                seen_t.add(t)
+                tlist.append(t)
+
+        for cand in tlist:
+            tested.append(cand)
+            if cand in self.rel_map:
+                return self.rel_map[cand], f"transformed rel_map match for '{cand}'", cand
+            if cand in self.name_map:
+                paths = self.name_map[cand]
+                if len(paths) == 1:
+                    return paths[0], f"transformed unique name_map match for '{cand}'", cand
+                # try uid disambiguation
+                if "/" in cand:
+                    uid = cand.split("/")[0]
+                    fname = Path(cand).name.lower()
+                    if uid in self.uid_map and fname in self.uid_map[uid]:
+                        return self.uid_map[uid][fname][0], f"transformed uid_map disambiguation (uid={uid}) for '{cand}'", cand
+                stem = Path(cand).stem.lower()
+                if stem in self.stem_map and len(self.stem_map[stem]) == 1:
+                    return self.stem_map[stem][0], f"transformed stem_map unique for stem '{stem}'", cand
+                return paths[0], f"transformed fallback first name_map for '{cand}'", cand
+
+        return None, f"no match after testing candidates: {tested}", None
+
     def _resolve_image(self, value: str) -> Optional[Path]:
         """Resolve a metadata image reference value to an absolute JPEG Path using indices.
 
         Uses direct dictionary lookups only (no scanning of all images).
         """
-        for cand in self._extract_image_candidates_from_value(value):
-            # exact relative path match
-            if cand in self.rel_map:
-                return self.rel_map[cand]
-            # filename match
-            if cand in self.name_map:
-                paths = self.name_map[cand]
-                if len(paths) == 1:
-                    return paths[0]
-                # multiple matches: try to disambiguate by checking if candidate contains a folder prefix
-                # (e.g., uid/filename)
-                if "/" in value.replace("\\", "/"):
-                    # attempt to match the relative parts
-                    vparts = value.replace("\\", "/").lower().split("/")
-                    for p in paths:
-                        rel = p.relative_to(self.jpeg_root).as_posix().lower()
-                        if all(part in rel for part in vparts if part):
-                            return p
-                # fallback to first path
-                return paths[0]
+        p, reason, cand = self._resolve_with_reason(value)
+        if p is not None:
+            return p
         return None
 
     def _infer_image_and_label_from_row(self, row: pd.Series) -> Optional[Tuple[Path, int]]:
@@ -213,16 +309,37 @@ class CBISDDMSplitter:
         The function inspects common metadata columns without performing expensive
         image scans.
         """
-        # possible image columns — look for any column name containing 'image' or 'file'
+        # possible image columns — prefer explicit columns, then fallback to any column containing 'image' or 'file'
         image_value = None
-        for col in row.index:
-            if not isinstance(col, str):
-                continue
-            if "image" in col.lower() or "file" in col.lower() or "filepath" in col.lower():
-                val = row.get(col)
-                if isinstance(val, str) and val.strip():
-                    image_value = val.strip()
-                    break
+        preferred_image_cols = [
+            "image file path",
+            "cropped image file path",
+            "roi mask file path",
+            "cropped image file",
+            "roi_mask_file_path",
+        ]
+
+        # prefer exact-named columns first
+        for pref in preferred_image_cols:
+            for col in row.index:
+                if isinstance(col, str) and col.lower().strip() == pref:
+                    val = row.get(col)
+                    if isinstance(val, str) and val.strip():
+                        image_value = val.strip()
+                        break
+            if image_value:
+                break
+
+        # fallback: any column name containing 'image' or 'file'
+        if not image_value:
+            for col in row.index:
+                if not isinstance(col, str):
+                    continue
+                if "image" in col.lower() or "file" in col.lower() or "filepath" in col.lower():
+                    val = row.get(col)
+                    if isinstance(val, str) and val.strip():
+                        image_value = val.strip()
+                        break
 
         if not image_value:
             return None
@@ -267,7 +384,45 @@ class CBISDDMSplitter:
         if label is None:
             return None
 
+        # Resolve image and optionally emit debug diagnostics
         img_path = self._resolve_image(image_value)
+        if self.debug:
+            candidates = self._extract_image_candidates_from_value(image_value)
+            self.logger.info("Resolver debug for metadata: %s", image_value)
+            for cand in candidates:
+                reason = ""
+                matched = None
+                if cand in self.rel_map:
+                    matched = self.rel_map[cand]
+                    reason = "exact rel_map match"
+                elif cand in self.name_map:
+                    paths = self.name_map[cand]
+                    if len(paths) == 1:
+                        matched = paths[0]
+                        reason = "unique name_map match"
+                    else:
+                        # attempt uid disambiguation
+                        vpos = image_value.replace("\\", "/").lstrip("/").lower()
+                        if "/" in vpos:
+                            vparts = vpos.split("/")
+                            uid = vparts[0]
+                            fname = Path(vpos).name.lower()
+                            if uid in self.uid_map and fname in self.uid_map[uid]:
+                                matched = self.uid_map[uid][fname][0]
+                                reason = f"uid_map disambiguation (uid={uid})"
+                        if matched is None:
+                            stem = Path(cand).stem.lower()
+                            if stem in self.stem_map and len(self.stem_map[stem]) == 1:
+                                matched = self.stem_map[stem][0]
+                                reason = "stem_map unique"
+                            else:
+                                reason = "multiple name_map entries; fallback to first"
+                                matched = paths[0]
+                else:
+                    reason = "no match in rel_map or name_map"
+
+                self.logger.info("  candidate=%s -> matched=%s reason=%s", cand, str(matched) if matched is not None else None, reason)
+
         if img_path is None:
             self.logger.debug("Could not resolve image for metadata value: %s", image_value)
             return None
@@ -289,6 +444,145 @@ class CBISDDMSplitter:
 
         train_meta = self._read_csv_files(TRAIN_CSV_FILENAMES)
         test_meta = self._read_csv_files(TEST_CSV_FILENAMES)
+
+        # If debug mode is enabled, run a diagnostics pass that also builds examples.
+        if self.debug:
+            # Print first 10 metadata identifiers
+            self.logger.info("--- Debug: first 10 metadata image identifiers ---")
+            meta_ids = []
+            for _, row in train_meta.iterrows():
+                imgv = None
+                for col in row.index:
+                    if isinstance(col, str) and col.lower().strip() in ("image file path", "cropped image file path", "roi mask file path"):
+                        val = row.get(col)
+                        if isinstance(val, str) and val.strip():
+                            imgv = val.strip()
+                            break
+                if not imgv:
+                    for col in row.index:
+                        if isinstance(col, str) and ("image" in col.lower() or "file" in col.lower() or "filepath" in col.lower()):
+                            val = row.get(col)
+                            if isinstance(val, str) and val.strip():
+                                imgv = val.strip()
+                                break
+                if imgv:
+                    meta_ids.append(imgv)
+                if len(meta_ids) >= 10:
+                    break
+            for mid in meta_ids:
+                self.logger.info("  %s", mid)
+
+            # Print first 10 indexed entries
+            self.logger.info("--- Debug: first 10 indexed rel_map keys ---")
+            for k in list(self.rel_map.keys())[:10]:
+                self.logger.info("  %s", k)
+            self.logger.info("--- Debug: first 10 indexed filename keys ---")
+            for k in list(self.name_map.keys())[:10]:
+                self.logger.info("  %s", k)
+
+            # Diagnostics and example building pass
+            total_rows = 0
+            resolved_rows = 0
+            failed_rows = 0
+            examples = []
+            for _, row in train_meta.iterrows():
+                total_rows += 1
+                # helper to get preferred field
+                def _get_field(r, name):
+                    for col in r.index:
+                        if isinstance(col, str) and col.lower().strip() == name:
+                            v = r.get(col)
+                            if isinstance(v, str) and v.strip():
+                                return v.strip()
+                    return None
+
+                image_fp = _get_field(row, "image file path")
+                cropped_fp = _get_field(row, "cropped image file path")
+                roi_fp = _get_field(row, "roi mask file path")
+                # fallback image field
+                if not image_fp:
+                    for col in row.index:
+                        if isinstance(col, str) and ("image" in col.lower() or "file" in col.lower() or "filepath" in col.lower()):
+                            val = row.get(col)
+                            if isinstance(val, str) and val.strip():
+                                image_fp = val.strip()
+                                break
+
+                # label extraction
+                label_value = None
+                preferred_label_cols = {
+                    "pathology",
+                    "pathology_status",
+                    "pathology description",
+                    "pathology_type",
+                    "biopsy result",
+                    "biopsy_result",
+                    "assessment",
+                    "assessment code",
+                }
+                for col in row.index:
+                    if not isinstance(col, str):
+                        continue
+                    lname = col.lower().strip()
+                    if lname in preferred_label_cols:
+                        val = row.get(col)
+                        if isinstance(val, str) and val.strip():
+                            label_value = val.strip()
+                            break
+                if label_value is None:
+                    for col in row.index:
+                        if not isinstance(col, str):
+                            continue
+                        lname = col.lower()
+                        if any(k in lname for k in ("path", "biopsy", "assessment")) and "image" not in lname and "file" not in lname:
+                            val = row.get(col)
+                            if isinstance(val, str) and val.strip():
+                                label_value = val.strip()
+                                break
+                label = infer_label_from_text(label_value)
+
+                # normalized lookup key
+                normalized_key = None
+                if image_fp:
+                    candlist = self._extract_image_candidates_from_value(image_fp)
+                    normalized_key = candlist[0] if candlist else None
+
+                matched_path = None
+                reason = None
+                if image_fp:
+                    p, reason, cand = self._resolve_with_reason(image_fp)
+                    matched_path = str(p) if p is not None else None
+
+                found = (matched_path is not None) and (label is not None)
+                if found and p is not None and p.exists():
+                    if self._validate_image(p):
+                        examples.append((str(p.resolve()), label))
+                        resolved_rows += 1
+                    else:
+                        reason = (reason or "") + "; unreadable image"
+                        failed_rows += 1
+                else:
+                    failed_rows += 1
+
+                # Log per-row diagnostics
+                self.logger.info("--- Metadata row %d diagnostics ---", total_rows)
+                self.logger.info("  image_file_path: %s", image_fp)
+                self.logger.info("  cropped_image_file_path: %s", cropped_fp)
+                self.logger.info("  roi_mask_file_path: %s", roi_fp)
+                self.logger.info("  normalized_lookup_key: %s", normalized_key)
+                self.logger.info("  label_value: %s -> mapped_label: %s", label_value, label)
+                self.logger.info("  matched: %s", matched_path)
+                self.logger.info("  reason: %s", reason)
+
+            # Summary
+            self.logger.info("--- Resolver diagnostics summary ---")
+            self.logger.info("  total metadata rows: %d", total_rows)
+            self.logger.info("  resolved rows: %d", resolved_rows)
+            self.logger.info("  failed rows: %d", failed_rows)
+            pct = (resolved_rows / total_rows * 100.0) if total_rows else 0.0
+            self.logger.info("  resolution percentage: %.2f%%", pct)
+            # dedupe examples
+            examples = list({(p, l) for p, l in examples})
 
         if train_meta.empty and test_meta.empty:
             raise RuntimeError("No metadata CSVs could be loaded from csv/ directory.")
@@ -365,6 +659,7 @@ class CBISDDMSplitter:
 def main() -> None:
     args = parse_args()
     splitter = CBISDDMSplitter(dataset_root=args.dataset_root, output_dir=args.output_dir, val_size=args.val_size)
+    splitter.debug = getattr(args, 'debug_resolver', False)
     result = splitter.prepare()
 
     print("Dataset preparation summary:")
