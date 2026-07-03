@@ -214,16 +214,28 @@ class CBISDDMSplitter:
         vraw = value.strip()
         vpos = vraw.replace("\\", "/").lstrip("/").lower()
 
-        tested = []
-        # fast second-UID lookup for DICOM metadata paths ending in .dcm
-        path_parts = vpos.split("/")
-        if path_parts and path_parts[-1].endswith(".dcm") and len(path_parts) >= 2:
-            second_uid = path_parts[-2]
-            if second_uid in self.uid_map:
-                uid_images = [p for paths in self.uid_map[second_uid].values() for p in paths]
-                if uid_images:
-                    return uid_images[0], f"uid_map folder match for '{second_uid}'", second_uid
+        # ----- Fast-path for CBIS-DDSM metadata -----
+        parts = vpos.split("/")
 
+        # Metadata format:
+        # Mass-Training.../UID1/UID2/000000.dcm
+        # JPEG folder is UID2
+        if len(parts) >= 4 and parts[-1] == "000000.dcm":
+            uid = parts[-2]
+
+            if uid in self.uid_map:
+                files = self.uid_map[uid]
+
+                if isinstance(files, dict):
+                    for file_list in files.values():
+                        if file_list:
+                            return file_list[0], "uid fast-path", uid
+
+                elif files:
+                    return files[0], "uid fast-path", uid
+        # --------------------------------------------
+
+        tested = []
         # primary candidates
         candidates = self._extract_image_candidates_from_value(vraw)
         for cand in candidates:
