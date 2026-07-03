@@ -57,6 +57,8 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--debug-resolver",
+        "--debug_resolver",
+        dest="debug_resolver",
         action="store_true",
         help="Print resolver debug information for first rows (diagnostics).",
     )
