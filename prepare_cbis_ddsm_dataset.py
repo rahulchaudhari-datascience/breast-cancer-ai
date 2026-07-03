@@ -4,7 +4,7 @@ import argparse
 import logging
 import re
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import cv2
 import pandas as pd
@@ -19,69 +19,25 @@ TEST_CSV_FILENAMES = [
     "mass_case_description_test_set.csv",
     "calc_case_description_test_set.csv",
 ]
-LABEL_INCLUDE_PATTERNS = {
-    "benign": 0,
-    "malignant": 1,
-}
-IGNORED_LABEL_PATTERNS = {"benign_without_callback", "other", "unknown"}
-IMAGE_COLUMNS = [
-    "image file path",
-    "image_path",
-    "image path",
-    "image file",
-    "image_file",
-    "imagefilename",
-    "image filename",
-    "file_name",
-    "file name",
-    "filename",
-    "image",
-]
-LABEL_COLUMNS = [
-    "pathology",
-    "pathology_status",
-    "assessment",
-    "assessment code",
-    "pathology description",
-    "pathology_type",
-    "biopsy result",
-    "biopsy_result",
-]
-DICOM_COLUMNS = [
-    "image file path",
-    "image_path",
-    "dicom_path",
-    "filepath",
-    "file_path",
-    "file",
-    "imageid",
-    "image_id",
-    "fileid",
-    "file_id",
-]
 
 
 def configure_logging(log_path: Path) -> None:
+    """Configure logging to stdout and file."""
     log_path.parent.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
-        handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler(str(log_path), encoding="utf-8"),
-        ],
+        handlers=[logging.StreamHandler(), logging.FileHandler(str(log_path), encoding="utf-8")],
     )
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Prepare CBIS-DDSM dataset annotations for breast cancer training."
-    )
+    parser = argparse.ArgumentParser(description="Prepare CBIS-DDSM dataset annotations.")
 
     parser.add_argument(
         "--dataset-root",
         type=Path,
-        default=Path.cwd(),
+        required=True,
         help="Path to the CBIS-DDSM dataset root containing csv/ and jpeg/ directories.",
     )
 
@@ -108,37 +64,30 @@ def normalize_text(value: Optional[str]) -> str:
     return re.sub(r"\s+", " ", str(value).strip().lower())
 
 
-def extract_image_path_candidates(value: str) -> List[str]:
-    value = value.strip()
-    if not value:
-        return []
+def infer_label_from_text(value: Optional[str]) -> Optional[int]:
+    """Map pathology/assessment text to labels.
 
-    candidates = [value]
-    if "/" in value or "\\" in value:
-        candidates.append(Path(value).name)
-        candidates.append(Path(value).stem + Path(value).suffix.lower())
-    if not any(value.lower().endswith(ext) for ext in SUPPORTED_IMAGE_EXTENSIONS):
-        for ext in [".jpg", ".jpeg"]:
-            candidates.append(value + ext)
-    return list(dict.fromkeys(candidates))
-
-
-def infer_label(label_value: Optional[str]) -> Optional[int]:
-    if label_value is None:
+    Returns 1 for malignant, 0 for benign/benign_without_callback, and None if unknown/ignored.
+    """
+    if value is None:
         return None
-
-    normalized = normalize_text(label_value)
-    if any(ignored in normalized for ignored in IGNORED_LABEL_PATTERNS):
-        return None
-
-    for pattern, label in LABEL_INCLUDE_PATTERNS.items():
-        if pattern in normalized:
-            return label
-
+    v = normalize_text(value)
+    if "malignant" in v:
+        return 1
+    if "benign_without_callback" in v or "benign without callback" in v:
+        return 0
+    if "benign" in v:
+        return 0
     return None
 
 
 class CBISDDMSplitter:
+    """Efficiently prepare CBIS-DDSM train/val CSVs using O(N) image indexing.
+
+    The implementation indexes JPEG images once into hash maps and uses direct
+    lookups (no nested scanning) when resolving image references from CSV metadata.
+    """
+
     def __init__(self, dataset_root: Path, output_dir: Path, val_size: float = 0.15):
         self.dataset_root = dataset_root.expanduser().resolve()
         self.output_dir = output_dir.expanduser().resolve()
@@ -148,257 +97,279 @@ class CBISDDMSplitter:
         self.log_path = self.output_dir / "prepare_cbis_ddsm_dataset.log"
         configure_logging(self.log_path)
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.image_index = self._index_images()
-        self.dicom_map = self._load_dicom_info()
 
-    def _index_images(self) -> Dict[str, List[Path]]:
+        self._ensure_roots()
+        # Build image indices once (O(N_images))
+        self.name_map, self.rel_map = self._index_images()
+
+    def _ensure_roots(self) -> None:
+        if not self.csv_root.exists():
+            raise FileNotFoundError(f"CSV directory not found: {self.csv_root}")
         if not self.jpeg_root.exists():
             raise FileNotFoundError(f"JPEG directory not found: {self.jpeg_root}")
 
-        image_paths: Dict[str, List[Path]] = {}
-        self.logger.info("Indexing JPEG image files from %s", self.jpeg_root)
+    def _index_images(self) -> Tuple[Dict[str, List[Path]], Dict[str, Path]]:
+        """Index all JPEG images under `jpeg_root`.
 
+        Returns:
+            name_map: mapping from filename (lowercase) -> list of absolute Paths
+            rel_map: mapping from relative path under jpeg_root (posix, lowercase) -> Path
+        """
+        name_map: Dict[str, List[Path]] = {}
+        rel_map: Dict[str, Path] = {}
+        self.logger.info("Indexing JPEG images under %s", self.jpeg_root)
+        count = 0
         for path in self.jpeg_root.rglob("*"):
-            if path.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS:
-                key = path.name.lower()
-                image_paths.setdefault(key, []).append(path)
+            if path.is_file() and path.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS:
+                count += 1
+                name = path.name.lower()
+                name_map.setdefault(name, []).append(path)
+                try:
+                    rel = path.relative_to(self.jpeg_root).as_posix().lower()
+                except Exception:
+                    rel = path.as_posix().lower()
+                rel_map[rel] = path
 
-        self.logger.info("Found %d image files", sum(len(v) for v in image_paths.values()))
-        return image_paths
+        self.logger.info("Indexed %d image files", count)
+        return name_map, rel_map
 
-    def _load_dicom_info(self) -> Dict[str, Path]:
-        dicom_csv = self.csv_root / "dicom_info.csv"
-        mapping: Dict[str, Path] = {}
-
-        if not dicom_csv.exists():
-            self.logger.info("dicom_info.csv not found, proceeding without DICOM mapping.")
-            return mapping
-
-        self.logger.info("Loading DICOM metadata from %s", dicom_csv)
-        try:
-            df = pd.read_csv(dicom_csv, low_memory=False)
-        except Exception as exc:
-            self.logger.warning("Failed to read dicom_info.csv: %s", exc)
-            return mapping
-
-        column_map = {col.lower(): col for col in df.columns}
-        candidate_columns = [column_map[col] for col in column_map if col in DICOM_COLUMNS]
-
-        for _, row in df.iterrows():
-            for col in candidate_columns:
-                value = row.get(col)
-                if not isinstance(value, str) or not value.strip():
-                    continue
-                for candidate in extract_image_path_candidates(value):
-                    path = self._resolve_image_candidate(candidate)
-                    if path is not None:
-                        mapping[normalize_text(candidate)] = path
-                        break
-
-        self.logger.info("Loaded %d DICOM image mappings", len(mapping))
-        return mapping
-
-    def _resolve_image_candidate(self, candidate: str) -> Optional[Path]:
-        candidate_normalized = normalize_text(candidate)
-        if not candidate_normalized:
-            return None
-
-        candidate_path = Path(candidate)
-        if candidate_path.is_absolute() and candidate_path.exists():
-            return candidate_path
-
-        if candidate_normalized in self.dicom_map:
-            return self.dicom_map[candidate_normalized]
-
-        if candidate_path.name.lower() in self.image_index:
-            paths = self.image_index[candidate_path.name.lower()]
-            if len(paths) == 1:
-                return paths[0]
-            for path in paths:
-                if candidate_path.parent.name and candidate_path.parent.name.lower() in {part.lower() for part in path.parts}:
-                    return path
-                if candidate_path.stem.lower() == path.stem.lower() and path.suffix.lower() == candidate_path.suffix.lower():
-                    return path
-
-        candidate_lower = candidate.lower().replace("\\", "/")
-        if candidate_lower.startswith("jpeg/"):
-            candidate_lower = candidate_lower[len("jpeg/"):]
-
-        for path_list in self.image_index.values():
-            for image_path in path_list:
-                image_relative = str(image_path.relative_to(self.jpeg_root)).replace("\\", "/").lower()
-                if candidate_lower in image_relative:
-                    return image_path
-
-        return None
-
-    def _find_image_path(self, image_value: str) -> Optional[Path]:
-        if not isinstance(image_value, str) or not image_value.strip():
-            return None
-
-        for candidate in extract_image_path_candidates(image_value):
-            path = self._resolve_image_candidate(candidate)
-            if path is not None and path.exists():
-                return path
-
-        return None
-
-    def _read_metadata_files(self, filenames: Iterable[str]) -> pd.DataFrame:
+    def _read_csv_files(self, filenames: List[str]) -> pd.DataFrame:
         rows: List[pd.DataFrame] = []
-        for filename in filenames:
-            path = self.csv_root / filename
-            if not path.exists():
-                self.logger.warning("Metadata file not found and will be skipped: %s", path)
+        for fn in filenames:
+            p = self.csv_root / fn
+            if not p.exists():
+                self.logger.warning("Missing metadata file, skipping: %s", p)
                 continue
             try:
-                df = pd.read_csv(path, low_memory=False)
+                df = pd.read_csv(p, low_memory=False)
                 rows.append(df)
-                self.logger.info("Loaded metadata file: %s (%d rows)", path, len(df))
+                self.logger.info("Loaded %s (%d rows)", p.name, len(df))
             except Exception as exc:
-                self.logger.warning("Failed to read metadata file %s: %s", path, exc)
+                self.logger.warning("Failed to read %s: %s", p, exc)
         if not rows:
             return pd.DataFrame()
         return pd.concat(rows, ignore_index=True)
 
-    def _extract_image_column(self, row: pd.Series) -> Optional[str]:
-        for col in IMAGE_COLUMNS:
-            if col in row.index and isinstance(row[col], str) and row[col].strip():
-                return row[col].strip()
-        for col in row.index:
-            if isinstance(col, str) and "image" in col.lower() and isinstance(row[col], str) and row[col].strip():
-                return row[col].strip()
+    def _extract_image_candidates_from_value(self, value: str) -> List[str]:
+        """Produce a short list of candidate keys (rel path and filename) for fast lookup."""
+        v = str(value).strip()
+        if not v:
+            return []
+        candidates: List[str] = []
+        # normalize separators
+        v_posix = v.replace("\\", "/")
+        # If value already looks like a relative path under jpeg/, strip leading 'jpeg/' if present
+        if v_posix.lower().startswith("jpeg/"):
+            rel = v_posix[len("jpeg/"):].lstrip("/")
+            candidates.append(rel.lower())
+        # full relative path candidate
+        if "/" in v_posix:
+            candidates.append(v_posix.lstrip("/").lower())
+            candidates.append(Path(v_posix).name.lower())
+        else:
+            candidates.append(v_posix.lower())
+        # try adding common jpg extensions if missing
+        if not any(v.lower().endswith(ext) for ext in [".jpg", ".jpeg"]):
+            candidates.extend([v.lower() + ".jpg", v.lower() + ".jpeg"])  # type: ignore[arg-type]
+        # dedupe while preserving order
+        seen = set()
+        out = []
+        for c in candidates:
+            if c and c not in seen:
+                seen.add(c)
+                out.append(c)
+        return out
+
+    def _resolve_image(self, value: str) -> Optional[Path]:
+        """Resolve a metadata image reference value to an absolute JPEG Path using indices.
+
+        Uses direct dictionary lookups only (no scanning of all images).
+        """
+        for cand in self._extract_image_candidates_from_value(value):
+            # exact relative path match
+            if cand in self.rel_map:
+                return self.rel_map[cand]
+            # filename match
+            if cand in self.name_map:
+                paths = self.name_map[cand]
+                if len(paths) == 1:
+                    return paths[0]
+                # multiple matches: try to disambiguate by checking if candidate contains a folder prefix
+                # (e.g., uid/filename)
+                if "/" in value.replace("\\", "/"):
+                    # attempt to match the relative parts
+                    vparts = value.replace("\\", "/").lower().split("/")
+                    for p in paths:
+                        rel = p.relative_to(self.jpeg_root).as_posix().lower()
+                        if all(part in rel for part in vparts if part):
+                            return p
+                # fallback to first path
+                return paths[0]
         return None
 
-    def _extract_label_column(self, row: pd.Series) -> Optional[str]:
-        for col in LABEL_COLUMNS:
-            if col in row.index and isinstance(row[col], str) and row[col].strip():
-                return row[col].strip()
+    def _infer_image_and_label_from_row(self, row: pd.Series) -> Optional[Tuple[Path, int]]:
+        """Extract image reference and label from a metadata row.
+
+        The function inspects common metadata columns without performing expensive
+        image scans.
+        """
+        # possible image columns — look for any column name containing 'image' or 'file'
+        image_value = None
         for col in row.index:
-            if isinstance(col, str) and ("path" in col.lower() or "assess" in col.lower() or "biopsy" in col.lower()):
-                value = row[col]
-                if isinstance(value, str) and value.strip():
-                    return value.strip()
-        return None
-
-    def _build_examples(self, dataframe: pd.DataFrame) -> List[Tuple[Path, int]]:
-        examples: List[Tuple[Path, int]] = []
-        seen: Set[Tuple[str, int]] = set()
-
-        for _, row in dataframe.iterrows():
-            image_value = self._extract_image_column(row)
-            if not image_value:
+            if not isinstance(col, str):
                 continue
+            if "image" in col.lower() or "file" in col.lower() or "filepath" in col.lower():
+                val = row.get(col)
+                if isinstance(val, str) and val.strip():
+                    image_value = val.strip()
+                    break
 
-            label_text = self._extract_label_column(row)
-            label = infer_label(label_text)
-            if label is None:
-                continue
+        if not image_value:
+            return None
 
-            image_path = self._find_image_path(image_value)
-            if image_path is None or not image_path.exists():
-                self.logger.debug("Skipping missing image for row: %s", image_value)
-                continue
-
-            if not self._validate_image(image_path):
-                self.logger.warning("Skipping corrupted or unreadable image: %s", image_path)
-                continue
-
-            key = (str(image_path.resolve()), label)
-            if key in seen:
-                continue
-
-            seen.add(key)
-            examples.append((image_path.resolve(), label))
-
-        return examples
-
-    def _validate_image(self, image_path: Path) -> bool:
-        if not image_path.exists():
-            return False
-        image = cv2.imread(str(image_path))
-        return image is not None
-
-    def _create_dataframe(self, examples: List[Tuple[Path, int]]) -> pd.DataFrame:
-        return pd.DataFrame(
-            [(str(path), label) for path, label in examples],
-            columns=["image_path", "label"],
-        )
-
-    def _save_csv(self, dataframe: pd.DataFrame, filename: str) -> Path:
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = self.output_dir / filename
-        dataframe.to_csv(output_path, index=False)
-        self.logger.info("Saved %s (%d rows)", output_path, len(dataframe))
-        return output_path
-
-    def prepare(self) -> Dict[str, Path]:
-        self.logger.info("Preparing CBIS-DDSM annotations in %s", self.dataset_root)
-
-        train_df = self._read_metadata_files(TRAIN_CSV_FILENAMES)
-        test_df = self._read_metadata_files(TEST_CSV_FILENAMES)
-
-        if train_df.empty and test_df.empty:
-            raise RuntimeError("No CBIS-DDSM metadata files could be loaded.")
-
-        train_examples = self._build_examples(train_df)
-        test_examples = self._build_examples(test_df)
-
-        if not train_examples:
-            raise RuntimeError("No valid training metadata examples were found.")
-
-        self.logger.info("Found %d valid train examples and %d valid test examples", len(train_examples), len(test_examples))
-
-        train_df = self._create_dataframe(train_examples)
-
-        if len(train_df["label"].unique()) < 2:
-            raise RuntimeError("Training metadata does not contain at least two label classes.")
-
-        train_df, val_df = train_test_split(
-            train_df,
-            test_size=self.val_size,
-            stratify=train_df["label"],
-            random_state=42,
-        )
-
-        train_df = train_df.reset_index(drop=True)
-        val_df = val_df.reset_index(drop=True)
-
-        self._save_csv(train_df, "train.csv")
-        self._save_csv(val_df, "val.csv")
-
-        if test_examples:
-            test_df = self._create_dataframe(test_examples).reset_index(drop=True)
-            self._save_csv(test_df, "test.csv")
-
-        self.logger.info("Dataset preparation completed successfully.")
-        self.logger.info("Train distribution: %s", self._distribution(train_df))
-        self.logger.info("Val distribution: %s", self._distribution(val_df))
-
-        return {
-            "train_csv": self.output_dir / "train.csv",
-            "val_csv": self.output_dir / "val.csv",
-            "test_csv": self.output_dir / "test.csv" if test_examples else None,
+        # infer label from common columns. Prefer explicit pathology/biopsy/assessment
+        # columns and avoid selecting image/file columns that also contain 'path'.
+        label_value = None
+        preferred_label_cols = {
+            "pathology",
+            "pathology_status",
+            "pathology description",
+            "pathology_type",
+            "biopsy result",
+            "biopsy_result",
+            "assessment",
+            "assessment code",
         }
 
-    @staticmethod
-    def _distribution(dataframe: pd.DataFrame) -> Dict[str, int]:
-        return dataframe["label"].value_counts().to_dict()
+        for col in row.index:
+            if not isinstance(col, str):
+                continue
+            lname = col.lower().strip()
+            if lname in preferred_label_cols:
+                val = row.get(col)
+                if isinstance(val, str) and val.strip():
+                    label_value = val.strip()
+                    break
+
+        # fallback: search for columns containing path/biopsy/assessment but skip image/file columns
+        if label_value is None:
+            for col in row.index:
+                if not isinstance(col, str):
+                    continue
+                lname = col.lower()
+                if any(k in lname for k in ("path", "biopsy", "assessment")) and "image" not in lname and "file" not in lname:
+                    val = row.get(col)
+                    if isinstance(val, str) and val.strip():
+                        label_value = val.strip()
+                        break
+
+        label = infer_label_from_text(label_value)
+        if label is None:
+            return None
+
+        img_path = self._resolve_image(image_value)
+        if img_path is None:
+            self.logger.debug("Could not resolve image for metadata value: %s", image_value)
+            return None
+
+        return img_path.resolve(), label
+
+    def _validate_image(self, p: Path) -> bool:
+        if not p.exists():
+            return False
+        try:
+            img = cv2.imread(str(p))
+            return img is not None
+        except Exception:
+            return False
+
+    def prepare(self) -> Dict[str, Path]:
+        """Main entrypoint: generate train/val CSVs at the configured output directory."""
+        self.logger.info("Preparing dataset from %s", self.dataset_root)
+
+        train_meta = self._read_csv_files(TRAIN_CSV_FILENAMES)
+        test_meta = self._read_csv_files(TEST_CSV_FILENAMES)
+
+        if train_meta.empty and test_meta.empty:
+            raise RuntimeError("No metadata CSVs could be loaded from csv/ directory.")
+
+        examples: List[Tuple[str, int]] = []
+        seen = set()
+
+        # build examples from training metadata (O(N_rows) with O(1) image lookups)
+        for _, row in train_meta.iterrows():
+            res = self._infer_image_and_label_from_row(row)
+            if res is None:
+                continue
+            img_path, label = res
+            if not img_path.exists():
+                self.logger.debug("Image does not exist, skipping: %s", img_path)
+                continue
+            if not self._validate_image(img_path):
+                self.logger.warning("Unreadable image, skipping: %s", img_path)
+                continue
+            key = (str(img_path), label)
+            if key in seen:
+                continue
+            seen.add(key)
+            examples.append((str(img_path), label))
+
+        if not examples:
+            raise RuntimeError("No valid examples were found in training metadata.")
+
+        df = pd.DataFrame(examples, columns=["image_path", "label"])
+
+        # Basic validations
+        # 1) Check duplicates
+        before = len(df)
+        df = df.drop_duplicates()
+        after = len(df)
+        if before != after:
+            self.logger.info("Dropped %d duplicate rows", before - after)
+
+        # 2) Missing labels
+        if df["label"].isnull().any():
+            raise RuntimeError("Missing labels detected in prepared examples.")
+
+        # 3) Ensure all image files exist
+        missing = [p for p in df["image_path"] if not Path(p).exists()]
+        if missing:
+            raise RuntimeError(f"Some images are missing from disk (first example): {missing[0]}")
+
+        # Stratified split
+        if len(df["label"].unique()) < 2:
+            raise RuntimeError("Need at least two classes to perform stratified split.")
+
+        train_df, val_df = train_test_split(
+            df, test_size=self.val_size, stratify=df["label"], random_state=42
+        )
+
+        # Ensure required output format: image_path,label
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        train_out = self.output_dir / "train.csv"
+        val_out = self.output_dir / "val.csv"
+        train_df.to_csv(train_out, index=False, columns=["image_path", "label"])
+        val_df.to_csv(val_out, index=False, columns=["image_path", "label"])
+
+        # Print/Log distributions and counts
+        train_dist = train_df["label"].value_counts().to_dict()
+        val_dist = val_df["label"].value_counts().to_dict()
+        self.logger.info("Train distribution: %s", train_dist)
+        self.logger.info("Val distribution: %s", val_dist)
+        self.logger.info("Train samples: %d", len(train_df))
+        self.logger.info("Val samples: %d", len(val_df))
+
+        return {"train_csv": train_out, "val_csv": val_out}
 
 
 def main() -> None:
     args = parse_args()
-    splitter = CBISDDMSplitter(
-        dataset_root=args.dataset_root,
-        output_dir=args.output_dir,
-        val_size=args.val_size,
-    )
+    splitter = CBISDDMSplitter(dataset_root=args.dataset_root, output_dir=args.output_dir, val_size=args.val_size)
     result = splitter.prepare()
 
     print("Dataset preparation summary:")
     print(f"  Train CSV: {result['train_csv']}")
     print(f"  Val CSV: {result['val_csv']}")
-    if result["test_csv"]:
-        print(f"  Test CSV: {result['test_csv']}")
 
 
 if __name__ == "__main__":
