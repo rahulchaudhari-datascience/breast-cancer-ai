@@ -6,7 +6,6 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import cv2
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
@@ -109,6 +108,12 @@ class CBISDDMSplitter:
         self._ensure_roots()
         # Build image indices once (O(N_images))
         self.name_map, self.rel_map, self.uid_map, self.stem_map = self._index_images()
+        self._uid_cache = {}
+        for uid, files in self.uid_map.items():
+            for file_list in files.values():
+                if file_list:
+                    self._uid_cache[uid] = file_list[0]
+                    break
         # debug flag (can be set from CLI)
         self.debug = False
 
@@ -222,17 +227,9 @@ class CBISDDMSplitter:
         # JPEG folder is UID2
         if len(parts) >= 4 and parts[-1] == "000000.dcm":
             uid = parts[-2]
-
-            if uid in self.uid_map:
-                files = self.uid_map[uid]
-
-                if isinstance(files, dict):
-                    for file_list in files.values():
-                        if file_list:
-                            return file_list[0], "uid fast-path", uid
-
-                elif files:
-                    return files[0], "uid fast-path", uid
+            cached_path = self._uid_cache.get(uid)
+            if cached_path is not None:
+                return cached_path, "uid fast-path", uid
         # --------------------------------------------
 
         tested = []
@@ -326,13 +323,30 @@ class CBISDDMSplitter:
             return p
         return None
 
-    def _infer_image_and_label_from_row(self, row: pd.Series) -> Optional[Tuple[Path, int]]:
+    def _infer_image_and_label_from_row(self, row) -> Optional[Tuple[Path, int]]:
         """Extract image reference and label from a metadata row.
 
         The function inspects common metadata columns without performing expensive
         image scans.
         """
-        # possible image columns — prefer explicit columns, then fallback to any column containing 'image' or 'file'
+        def _get_column_value(column_name: str):
+            if hasattr(row, "_fields"):
+                sanitized = column_name.lower().replace(" ", "_")
+                if column_name in row._fields:
+                    return getattr(row, column_name)
+                if sanitized in row._fields:
+                    return getattr(row, sanitized)
+                return None
+            return row.get(column_name)
+
+        def _iter_columns():
+            if hasattr(row, "_fields"):
+                for field in row._fields:
+                    yield field, getattr(row, field)
+            else:
+                for field in row.index:
+                    yield field, row.get(field)
+
         image_value = None
         preferred_image_cols = [
             "image file path",
@@ -342,24 +356,23 @@ class CBISDDMSplitter:
             "roi_mask_file_path",
         ]
 
-        # prefer exact-named columns first
         for pref in preferred_image_cols:
-            for col in row.index:
-                if isinstance(col, str) and col.lower().strip() == pref:
-                    val = row.get(col)
+            for col, val in _iter_columns():
+                if not isinstance(col, str):
+                    continue
+                if col.lower().replace("_", " ").strip() == pref:
                     if isinstance(val, str) and val.strip():
                         image_value = val.strip()
                         break
             if image_value:
                 break
 
-        # fallback: any column name containing 'image' or 'file'
         if not image_value:
-            for col in row.index:
+            for col, val in _iter_columns():
                 if not isinstance(col, str):
                     continue
-                if "image" in col.lower() or "file" in col.lower() or "filepath" in col.lower():
-                    val = row.get(col)
+                name = col.lower().replace("_", " ")
+                if "image" in name or "file" in name or "filepath" in name:
                     if isinstance(val, str) and val.strip():
                         image_value = val.strip()
                         break
@@ -367,8 +380,6 @@ class CBISDDMSplitter:
         if not image_value:
             return None
 
-        # infer label from common columns. Prefer explicit pathology/biopsy/assessment
-        # columns and avoid selecting image/file columns that also contain 'path'.
         label_value = None
         preferred_label_cols = {
             "pathology",
@@ -381,24 +392,21 @@ class CBISDDMSplitter:
             "assessment code",
         }
 
-        for col in row.index:
+        for col, val in _iter_columns():
             if not isinstance(col, str):
                 continue
-            lname = col.lower().strip()
+            lname = col.lower().replace("_", " ").strip()
             if lname in preferred_label_cols:
-                val = row.get(col)
                 if isinstance(val, str) and val.strip():
                     label_value = val.strip()
                     break
 
-        # fallback: search for columns containing path/biopsy/assessment but skip image/file columns
         if label_value is None:
-            for col in row.index:
+            for col, val in _iter_columns():
                 if not isinstance(col, str):
                     continue
-                lname = col.lower()
+                lname = col.lower().replace("_", " ")
                 if any(k in lname for k in ("path", "biopsy", "assessment")) and "image" not in lname and "file" not in lname:
-                    val = row.get(col)
                     if isinstance(val, str) and val.strip():
                         label_value = val.strip()
                         break
@@ -407,7 +415,6 @@ class CBISDDMSplitter:
         if label is None:
             return None
 
-        # Resolve image and optionally emit debug diagnostics
         img_path = self._resolve_image(image_value)
         if self.debug:
             candidates = self._extract_image_candidates_from_value(image_value)
@@ -447,19 +454,15 @@ class CBISDDMSplitter:
                 self.logger.info("  candidate=%s -> matched=%s reason=%s", cand, str(matched) if matched is not None else None, reason)
 
         if img_path is None:
+            print("=" * 80)
+            print("IMAGE VALUE :", image_value)
+            print("LABEL VALUE :", label_value)
+            print("LABEL       :", label)
+            print("IMG PATH    :", img_path)
             self.logger.debug("Could not resolve image for metadata value: %s", image_value)
             return None
 
         return img_path.resolve(), label
-
-    def _validate_image(self, p: Path) -> bool:
-        if not p.exists():
-            return False
-        try:
-            img = cv2.imread(str(p))
-            return img is not None
-        except Exception:
-            return False
 
     def prepare(self) -> Dict[str, Path]:
         """Main entrypoint: generate train/val CSVs at the configured output directory."""
@@ -467,6 +470,13 @@ class CBISDDMSplitter:
 
         train_meta = self._read_csv_files(TRAIN_CSV_FILENAMES)
         test_meta = self._read_csv_files(TEST_CSV_FILENAMES)
+
+        self.logger.info("Starting to build examples...")
+
+        self.logger.info("=== SINGLE ROW DEBUG TEST ===")
+        row = train_meta.iloc[0]
+        res = self._infer_image_and_label_from_row(row)
+        self.logger.info("TEST RESULT: %s", res)
 
         # If debug mode is enabled, run a diagnostics pass that also builds examples.
         if self.debug:
@@ -576,14 +586,9 @@ class CBISDDMSplitter:
                     p, reason, cand = self._resolve_with_reason(image_fp)
                     matched_path = str(p) if p is not None else None
 
-                found = (matched_path is not None) and (label is not None)
-                if found and p is not None and p.exists():
-                    if self._validate_image(p):
-                        examples.append((str(p.resolve()), label))
-                        resolved_rows += 1
-                    else:
-                        reason = (reason or "") + "; unreadable image"
-                        failed_rows += 1
+                if matched_path is not None and label is not None:
+                    examples.append((str(p.resolve()), label))
+                    resolved_rows += 1
                 else:
                     failed_rows += 1
 
@@ -612,19 +617,18 @@ class CBISDDMSplitter:
 
         examples: List[Tuple[str, int]] = []
         seen = set()
+        processed_rows = len(train_meta)
+        resolved_rows = 0
 
         # build examples from training metadata (O(N_rows) with O(1) image lookups)
-        for _, row in train_meta.iterrows():
+        for i, row in enumerate(train_meta.itertuples(index=False, name="Pandas")):
+            if i % 1000 == 0:
+                self.logger.info("Processed %d rows", i)
             res = self._infer_image_and_label_from_row(row)
             if res is None:
                 continue
+            resolved_rows += 1
             img_path, label = res
-            if not img_path.exists():
-                self.logger.debug("Image does not exist, skipping: %s", img_path)
-                continue
-            if not self._validate_image(img_path):
-                self.logger.warning("Unreadable image, skipping: %s", img_path)
-                continue
             key = (str(img_path), label)
             if key in seen:
                 continue
@@ -633,6 +637,14 @@ class CBISDDMSplitter:
 
         if not examples:
             raise RuntimeError("No valid examples were found in training metadata.")
+
+        self.logger.info("Total rows processed: %d", processed_rows)
+        self.logger.info("Resolved rows: %d", resolved_rows)
+        self.logger.info("Valid samples collected: %d", len(examples))
+        self.logger.info("Skipped samples: %d", processed_rows - resolved_rows)
+        for i, sample in enumerate(examples[:10]):
+            self.logger.info("Sample %d: %s", i, sample)
+        assert examples, "No valid examples found - UID mapping still broken"
 
         df = pd.DataFrame(examples, columns=["image_path", "label"])
 
