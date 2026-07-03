@@ -1,0 +1,5 @@
+image file path,pathology
+jpeg/UID1/1-xxx.jpg,MALIGNANT
+jpeg/UID2/2-yyy.jpg,BENIGN
+jpeg/UID3/3-aaa.jpg,MALIGNANT
+jpeg/UID4/4-bbb.jpg,BENIGN
