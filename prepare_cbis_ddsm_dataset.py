@@ -215,6 +215,15 @@ class CBISDDMSplitter:
         vpos = vraw.replace("\\", "/").lstrip("/").lower()
 
         tested = []
+        # fast second-UID lookup for DICOM metadata paths ending in .dcm
+        path_parts = vpos.split("/")
+        if path_parts and path_parts[-1].endswith(".dcm") and len(path_parts) >= 2:
+            second_uid = path_parts[-2]
+            if second_uid in self.uid_map:
+                uid_images = [p for paths in self.uid_map[second_uid].values() for p in paths]
+                if uid_images:
+                    return uid_images[0], f"uid_map folder match for '{second_uid}'", second_uid
+
         # primary candidates
         candidates = self._extract_image_candidates_from_value(vraw)
         for cand in candidates:
