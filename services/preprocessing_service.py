@@ -9,7 +9,7 @@ import albumentations as A
 
 from albumentations.pytorch import ToTensorV2
 
-from config import IMAGE_SIZE
+from config import ENABLE_HORIZONTAL_FLIP, IMAGE_SIZE
 
 
 class PreprocessingService:
@@ -40,8 +40,11 @@ class PreprocessingService:
         self.model_transform = self._build_model_transform(image_size)
 
     def _build_train_transform(self, image_size: int) -> A.Compose:
-        return A.Compose([
-            A.HorizontalFlip(p=0.5),
+        transforms = []
+        if ENABLE_HORIZONTAL_FLIP:
+            # Horizontal flipping should be clinically validated for mammography datasets.
+            transforms.append(A.HorizontalFlip(p=0.5))
+        transforms.extend([
             A.VerticalFlip(p=0.25),
             A.ShiftScaleRotate(
                 shift_limit=0.05,
@@ -67,6 +70,7 @@ class PreprocessingService:
             A.Normalize(mean=self.normalize_mean, std=self.normalize_std),
             ToTensorV2(),
         ])
+        return A.Compose(transforms)
 
     def _build_val_transform(self, image_size: int) -> A.Compose:
         return A.Compose([

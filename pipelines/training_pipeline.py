@@ -38,6 +38,8 @@ from config import (
     EARLY_STOPPING_PATIENCE,
     LOGS_DIR,
     TENSORBOARD_DIR,
+    RANDOM_SEED,
+    set_seed,
 )
 
 
@@ -129,6 +131,8 @@ class TrainingPipeline:
         self.device = DEVICE
         self.model_name = model_name
 
+        set_seed(RANDOM_SEED)
+
         self.model = self._build_model()
         self.model.to(self.device)
 
@@ -210,20 +214,37 @@ class TrainingPipeline:
         if len(val_dataset) == 0:
             raise ValueError("Validation dataset is empty. Check validation CSV and file paths.")
 
+        generator = torch.Generator()
+        generator.manual_seed(RANDOM_SEED)
+
+        train_loader_kwargs = {
+            "batch_size": BATCH_SIZE,
+            "shuffle": True,
+            "num_workers": NUM_WORKERS,
+            "pin_memory": self.pin_memory,
+            "generator": generator,
+        }
+        val_loader_kwargs = {
+            "batch_size": BATCH_SIZE,
+            "shuffle": False,
+            "num_workers": NUM_WORKERS,
+            "pin_memory": self.pin_memory,
+        }
+
+        if NUM_WORKERS > 0:
+            train_loader_kwargs["persistent_workers"] = True
+            train_loader_kwargs["prefetch_factor"] = 2
+            val_loader_kwargs["persistent_workers"] = True
+            val_loader_kwargs["prefetch_factor"] = 2
+
         train_loader = DataLoader(
             train_dataset,
-            batch_size=BATCH_SIZE,
-            shuffle=True,
-            num_workers=NUM_WORKERS,
-            pin_memory=self.pin_memory,
+            **train_loader_kwargs,
         )
 
         val_loader = DataLoader(
             val_dataset,
-            batch_size=BATCH_SIZE,
-            shuffle=False,
-            num_workers=NUM_WORKERS,
-            pin_memory=self.pin_memory,
+            **val_loader_kwargs,
         )
 
         return train_loader, val_loader
@@ -314,15 +335,15 @@ class TrainingPipeline:
             images = images.to(self.device)
             labels = labels.to(self.device)
 
-            self.optimizer.zero_grad()
+            self.optimizer.zero_grad(set_to_none=True)
 
             with torch.cuda.amp.autocast(enabled=torch.cuda.is_available()):
                 logits = self.model(images)
                 loss = self.criterion(logits, labels)
 
             self.scaler.scale(loss).backward()
-
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            self.scaler.unscale_(self.optimizer)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
 
             self.scaler.step(self.optimizer)
             self.scaler.update()

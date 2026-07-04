@@ -1,6 +1,22 @@
 import os
+import random
 from pathlib import Path
+
+import numpy as np
 import torch
+
+
+def set_seed(seed: int = 42) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 
 # =====================================================
 # PROJECT ROOT
@@ -93,6 +109,7 @@ CLASSIFICATION_MODEL_NAME = "convnext_tiny"
 ENCODER_WEIGHTS = "imagenet"
 
 RANDOM_SEED = 42
+ENABLE_HORIZONTAL_FLIP = True
 
 # =====================================================
 # MODEL CONFIGURATION

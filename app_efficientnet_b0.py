@@ -3,7 +3,7 @@ from __future__ import annotations
 import streamlit as st
 import torch
 import torch.nn as nn
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from torchvision import models, transforms
 
 
@@ -12,6 +12,9 @@ def load_model(checkpoint_path: str):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = models.efficientnet_b0(pretrained=False)
     model.classifier[1] = nn.Linear(model.classifier[1].in_features, 2)
+    if not Path(checkpoint_path).is_file():
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+
     state = torch.load(checkpoint_path, map_location=device)
     if isinstance(state, dict) and "model_state_dict" in state:
         model.load_state_dict(state["model_state_dict"])
@@ -66,7 +69,12 @@ def main() -> None:
     uploaded_file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg", "tif", "tiff"])
 
     if uploaded_file is not None:
-        image = Image.open(uploaded_file).convert("RGB")
+        try:
+            with Image.open(uploaded_file) as image:
+                image = image.convert("RGB")
+        except (FileNotFoundError, UnidentifiedImageError, OSError) as exc:
+            st.error(f"Failed to load the uploaded image: {exc}")
+            return
         st.image(image, caption="Uploaded Image", use_column_width=True)
 
         if st.button("Run Prediction"):

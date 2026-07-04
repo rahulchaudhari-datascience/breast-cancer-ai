@@ -8,7 +8,7 @@ import pandas as pd
 import seaborn as sns
 import torch
 import torch.nn as nn
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from sklearn.metrics import auc, classification_report, confusion_matrix, roc_auc_score, roc_curve
 from torch.utils.data import DataLoader, Dataset
 from torchvision import models, transforms
@@ -38,7 +38,12 @@ class CBISDataset(Dataset):
         else:
             label = int(label)
 
-        image = Image.open(image_path).convert("RGB")
+        try:
+            with Image.open(image_path) as image:
+                image = image.convert("RGB")
+        except (FileNotFoundError, UnidentifiedImageError, OSError) as exc:
+            raise ValueError(f"Failed to load image '{image_path}'") from exc
+
         if self.transform is not None:
             image = self.transform(image)
 
@@ -76,6 +81,9 @@ def build_model(checkpoint_path: str, device: torch.device) -> nn.Module:
     model.classifier[1] = nn.Linear(model.classifier[1].in_features, 2)
     model = model.to(device)
 
+    if not Path(checkpoint_path).is_file():
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+
     checkpoint = torch.load(checkpoint_path, map_location=device)
     if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
         model.load_state_dict(checkpoint["model_state_dict"])
@@ -93,11 +101,11 @@ def evaluate_confusion_matrix(model, loader, device, output_dir: Path):
     model.eval()
     with torch.no_grad():
         for images, labels, _ in loader:
-            images = images.to(device)
+            images = images.to(device, non_blocking=torch.cuda.is_available())
             outputs = model(images)
             preds = torch.argmax(outputs, dim=1)
-            y_true.extend(labels.numpy())
-            y_pred.extend(preds.cpu().numpy())
+            y_true.extend(labels.detach().cpu().numpy())
+            y_pred.extend(preds.detach().cpu().numpy())
 
     cm = confusion_matrix(y_true, y_pred)
     report = classification_report(y_true, y_pred, target_names=["Benign", "Malignant"], digits=4)
@@ -233,11 +241,11 @@ def main():
     all_labels = []
     with torch.no_grad():
         for images, labels, _ in loader:
-            images = images.to(device)
+            images = images.to(device, non_blocking=torch.cuda.is_available())
             outputs = model(images)
             probs = torch.softmax(outputs, dim=1)[:, 1]
-            all_probs.extend(probs.cpu().numpy())
-            all_labels.extend(labels.numpy())
+            all_probs.extend(probs.detach().cpu().numpy())
+            all_labels.extend(labels.detach().cpu().numpy())
 
     roc_auc = plot_roc_curve(all_labels, all_probs, output_dir)
     print(f"Validation ROC AUC: {roc_auc:.4f}")

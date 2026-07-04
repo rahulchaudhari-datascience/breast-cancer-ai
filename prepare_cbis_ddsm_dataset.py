@@ -112,7 +112,8 @@ class CBISDDMSplitter:
         for uid, files in self.uid_map.items():
             for file_list in files.values():
                 if file_list:
-                    self._uid_cache[uid] = file_list[0]
+                    sorted_files = sorted(file_list, key=lambda p: p.as_posix())
+                    self._uid_cache[uid] = sorted_files[0]
                     break
         # debug flag (can be set from CLI)
         self.debug = False
@@ -155,6 +156,14 @@ class CBISDDMSplitter:
                 if len(parts) > 1:
                     uid = parts[0]
                     uid_map.setdefault(uid, {}).setdefault(name, []).append(path)
+
+        for name in list(name_map):
+            name_map[name] = sorted(name_map[name], key=lambda p: p.as_posix())
+        for stem in list(stem_map):
+            stem_map[stem] = sorted(stem_map[stem], key=lambda p: p.as_posix())
+        for uid in uid_map:
+            for name in list(uid_map[uid]):
+                uid_map[uid][name] = sorted(uid_map[uid][name], key=lambda p: p.as_posix())
 
         self.logger.info("Indexed %d image files", count)
         return name_map, rel_map, uid_map, stem_map
@@ -651,7 +660,7 @@ class CBISDDMSplitter:
         # Basic validations
         # 1) Check duplicates
         before = len(df)
-        df = df.drop_duplicates()
+        df = df.drop_duplicates(subset=["image_path", "label"]).reset_index(drop=True)
         after = len(df)
         if before != after:
             self.logger.info("Dropped %d duplicate rows", before - after)
@@ -661,7 +670,7 @@ class CBISDDMSplitter:
             raise RuntimeError("Missing labels detected in prepared examples.")
 
         # 3) Ensure all image files exist
-        missing = [p for p in df["image_path"] if not Path(p).exists()]
+        missing = [p for p in df["image_path"] if not Path(p).is_file()]
         if missing:
             raise RuntimeError(f"Some images are missing from disk (first example): {missing[0]}")
 

@@ -5,11 +5,13 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from sklearn.metrics import roc_auc_score
 from sklearn.utils.class_weight import compute_class_weight
 from torch.utils.data import DataLoader, Dataset
 from torchvision import models, transforms
+
+from config import ENABLE_HORIZONTAL_FLIP, RANDOM_SEED, set_seed
 
 
 class CBISDataset(Dataset):
@@ -40,7 +42,11 @@ class CBISDataset(Dataset):
         else:
             label = int(label)
 
-        image = Image.open(img_path).convert("RGB")
+        try:
+            with Image.open(img_path) as image:
+                image = image.convert("RGB")
+        except (FileNotFoundError, UnidentifiedImageError, OSError) as exc:
+            raise ValueError(f"Failed to load image '{img_path}'") from exc
 
         if self.transform:
             image = self.transform(image)
@@ -49,9 +55,13 @@ class CBISDataset(Dataset):
 
 
 def get_transforms():
-    train_tfms = transforms.Compose([
+    train_transforms = [
         transforms.Resize((224, 224)),
-        transforms.RandomHorizontalFlip(),
+    ]
+    if ENABLE_HORIZONTAL_FLIP:
+        # Horizontal flipping should be clinically validated for mammography datasets.
+        train_transforms.append(transforms.RandomHorizontalFlip())
+    train_transforms.extend([
         transforms.RandomRotation(10),
         transforms.ToTensor(),
         transforms.Normalize(
@@ -59,6 +69,8 @@ def get_transforms():
             std=[0.229, 0.224, 0.225],
         ),
     ])
+
+    train_tfms = transforms.Compose(train_transforms)
 
     val_tfms = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -78,8 +90,31 @@ def build_data_loaders(train_csv: str, val_csv: str, batch_size: int, num_worker
     train_ds = CBISDataset(train_csv, transform=train_tfms)
     val_ds = CBISDataset(val_csv, transform=val_tfms)
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    generator = torch.Generator()
+    generator.manual_seed(RANDOM_SEED)
+
+    train_loader_kwargs = {
+        "batch_size": batch_size,
+        "shuffle": True,
+        "num_workers": num_workers,
+        "generator": generator,
+        "pin_memory": torch.cuda.is_available(),
+    }
+    val_loader_kwargs = {
+        "batch_size": batch_size,
+        "shuffle": False,
+        "num_workers": num_workers,
+        "pin_memory": torch.cuda.is_available(),
+    }
+
+    if num_workers > 0:
+        train_loader_kwargs["persistent_workers"] = True
+        train_loader_kwargs["prefetch_factor"] = 2
+        val_loader_kwargs["persistent_workers"] = True
+        val_loader_kwargs["prefetch_factor"] = 2
+
+    train_loader = DataLoader(train_ds, **train_loader_kwargs)
+    val_loader = DataLoader(val_ds, **val_loader_kwargs)
 
     return train_loader, val_loader, train_ds
 
@@ -121,16 +156,18 @@ def train_one_epoch(model, criterion, optimizer, loader, device, scaler):
     running_loss = 0.0
 
     for images, labels in loader:
-        images = images.to(device)
-        labels = labels.to(device)
+        images = images.to(device, non_blocking=torch.cuda.is_available())
+        labels = labels.to(device, non_blocking=torch.cuda.is_available())
 
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
 
         with torch.cuda.amp.autocast(enabled=torch.cuda.is_available()):
             outputs = model(images)
             loss = criterion(outputs, labels)
 
         scaler.scale(loss).backward()
+        scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         scaler.step(optimizer)
         scaler.update()
 
@@ -146,12 +183,12 @@ def validate(model, loader, device):
     all_labels = []
 
     for images, labels in loader:
-        images = images.to(device)
+        images = images.to(device, non_blocking=torch.cuda.is_available())
         outputs = model(images)
         probs = torch.softmax(outputs, dim=1)[:, 1]
 
-        all_probs.extend(probs.cpu().numpy())
-        all_labels.extend(labels.numpy())
+        all_probs.extend(probs.detach().cpu().numpy())
+        all_labels.extend(labels.detach().cpu().numpy())
 
     if len(set(all_labels)) < 2:
         return 0.0
@@ -192,7 +229,11 @@ def main():
     parser.add_argument("--output-dir", type=Path, default=Path("models"))
     args = parser.parse_args()
 
+    set_seed(RANDOM_SEED)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+    print(f"Reproducibility seed: {RANDOM_SEED}")
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     train_loader, val_loader, train_ds = build_data_loaders(
