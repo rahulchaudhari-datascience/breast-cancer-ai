@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -630,7 +631,8 @@ class CBISDDMSplitter:
         resolved_rows = 0
 
         # build examples from training metadata (O(N_rows) with O(1) image lookups)
-        for i, row in enumerate(train_meta.itertuples(index=False, name="Pandas")):
+        # Use Series rows so columns with spaces are preserved and can be resolved.
+        for i, (_, row) in enumerate(train_meta.iterrows()):
             if i % 1000 == 0:
                 self.logger.info("Processed %d rows", i)
             res = self._infer_image_and_label_from_row(row)
@@ -675,11 +677,25 @@ class CBISDDMSplitter:
             raise RuntimeError(f"Some images are missing from disk (first example): {missing[0]}")
 
         # Stratified split
-        if len(df["label"].unique()) < 2:
+        n_classes = len(df["label"].unique())
+        if n_classes < 2:
             raise RuntimeError("Need at least two classes to perform stratified split.")
 
+        test_size = self.val_size
+        if isinstance(self.val_size, float):
+            min_test_samples = max(1, n_classes)
+            requested_test_samples = math.ceil(self.val_size * len(df))
+            if requested_test_samples < min_test_samples:
+                test_size = min_test_samples / len(df)
+                self.logger.warning(
+                    "Adjusted validation split from %.3f to %.3f to keep stratification valid for %d classes.",
+                    self.val_size,
+                    test_size,
+                    n_classes,
+                )
+
         train_df, val_df = train_test_split(
-            df, test_size=self.val_size, stratify=df["label"], random_state=42
+            df, test_size=test_size, stratify=df["label"], random_state=42
         )
 
         # Ensure required output format: image_path,label

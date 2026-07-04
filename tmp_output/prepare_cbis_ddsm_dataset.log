@@ -1,0 +1,257 @@
+2026-07-04 21:47:43,708 INFO Indexing JPEG images under D:\Downloads\breast-cancer-ai\mock_cbis\jpeg
+2026-07-04 21:47:43,712 INFO Indexed 4 image files
+2026-07-04 21:47:43,713 INFO Preparing dataset from D:\Downloads\breast-cancer-ai\mock_cbis
+2026-07-04 21:47:43,727 INFO Loaded mass_case_description_train_set.csv (4 rows)
+2026-07-04 21:47:43,728 WARNING Missing metadata file, skipping: D:\Downloads\breast-cancer-ai\mock_cbis\csv\calc_case_description_train_set.csv
+2026-07-04 21:47:43,732 WARNING Missing metadata file, skipping: D:\Downloads\breast-cancer-ai\mock_cbis\csv\mass_case_description_test_set.csv
+2026-07-04 21:47:43,732 WARNING Missing metadata file, skipping: D:\Downloads\breast-cancer-ai\mock_cbis\csv\calc_case_description_test_set.csv
+2026-07-04 21:47:43,734 INFO Starting to build examples...
+2026-07-04 21:47:43,734 INFO === SINGLE ROW DEBUG TEST ===
+2026-07-04 21:47:43,736 INFO Resolver debug for metadata: jpeg/UID1/1-xxx.jpg
+2026-07-04 21:47:43,737 INFO   candidate=uid1/1-xxx.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID1\1-xxx.jpg reason=exact rel_map match
+2026-07-04 21:47:43,737 INFO   candidate=jpeg/uid1/1-xxx.jpg -> matched=None reason=no match in rel_map or name_map
+2026-07-04 21:47:43,737 INFO   candidate=1-xxx.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID1\1-xxx.jpg reason=unique name_map match
+2026-07-04 21:47:43,738 INFO TEST RESULT: (WindowsPath('D:/Downloads/breast-cancer-ai/mock_cbis/jpeg/UID1/1-xxx.jpg'), 1)
+2026-07-04 21:47:43,739 INFO --- Debug: first 10 metadata image identifiers ---
+2026-07-04 21:47:43,743 INFO   jpeg/UID1/1-xxx.jpg
+2026-07-04 21:47:43,744 INFO   jpeg/UID2/2-yyy.jpg
+2026-07-04 21:47:43,744 INFO   jpeg/UID3/3-aaa.jpg
+2026-07-04 21:47:43,745 INFO   jpeg/UID4/4-bbb.jpg
+2026-07-04 21:47:43,745 INFO --- Debug: first 10 indexed rel_map keys ---
+2026-07-04 21:47:43,745 INFO   uid1/1-xxx.jpg
+2026-07-04 21:47:43,746 INFO   uid2/2-yyy.jpg
+2026-07-04 21:47:43,746 INFO   uid3/3-aaa.jpg
+2026-07-04 21:47:43,747 INFO   uid4/4-bbb.jpg
+2026-07-04 21:47:43,747 INFO --- Debug: first 10 indexed filename keys ---
+2026-07-04 21:47:43,748 INFO   1-xxx.jpg
+2026-07-04 21:47:43,748 INFO   2-yyy.jpg
+2026-07-04 21:47:43,748 INFO   3-aaa.jpg
+2026-07-04 21:47:43,749 INFO   4-bbb.jpg
+2026-07-04 21:47:43,751 INFO --- Metadata row 1 diagnostics ---
+2026-07-04 21:47:43,752 INFO   image_file_path: jpeg/UID1/1-xxx.jpg
+2026-07-04 21:47:43,752 INFO   cropped_image_file_path: None
+2026-07-04 21:47:43,753 INFO   roi_mask_file_path: None
+2026-07-04 21:47:43,753 INFO   normalized_lookup_key: uid1/1-xxx.jpg
+2026-07-04 21:47:43,754 INFO   label_value: MALIGNANT -> mapped_label: 1
+2026-07-04 21:47:43,755 INFO   matched: D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID1\1-xxx.jpg
+2026-07-04 21:47:43,755 INFO   reason: rel_map exact match for 'uid1/1-xxx.jpg'
+2026-07-04 21:47:43,758 INFO --- Metadata row 2 diagnostics ---
+2026-07-04 21:47:43,758 INFO   image_file_path: jpeg/UID2/2-yyy.jpg
+2026-07-04 21:47:43,758 INFO   cropped_image_file_path: None
+2026-07-04 21:47:43,759 INFO   roi_mask_file_path: None
+2026-07-04 21:47:43,759 INFO   normalized_lookup_key: uid2/2-yyy.jpg
+2026-07-04 21:47:43,760 INFO   label_value: BENIGN -> mapped_label: 0
+2026-07-04 21:47:43,760 INFO   matched: D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID2\2-yyy.jpg
+2026-07-04 21:47:43,760 INFO   reason: rel_map exact match for 'uid2/2-yyy.jpg'
+2026-07-04 21:47:43,762 INFO --- Metadata row 3 diagnostics ---
+2026-07-04 21:47:43,763 INFO   image_file_path: jpeg/UID3/3-aaa.jpg
+2026-07-04 21:47:43,763 INFO   cropped_image_file_path: None
+2026-07-04 21:47:43,764 INFO   roi_mask_file_path: None
+2026-07-04 21:47:43,764 INFO   normalized_lookup_key: uid3/3-aaa.jpg
+2026-07-04 21:47:43,765 INFO   label_value: MALIGNANT -> mapped_label: 1
+2026-07-04 21:47:43,765 INFO   matched: D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID3\3-aaa.jpg
+2026-07-04 21:47:43,766 INFO   reason: rel_map exact match for 'uid3/3-aaa.jpg'
+2026-07-04 21:47:43,767 INFO --- Metadata row 4 diagnostics ---
+2026-07-04 21:47:43,768 INFO   image_file_path: jpeg/UID4/4-bbb.jpg
+2026-07-04 21:47:43,768 INFO   cropped_image_file_path: None
+2026-07-04 21:47:43,769 INFO   roi_mask_file_path: None
+2026-07-04 21:47:43,770 INFO   normalized_lookup_key: uid4/4-bbb.jpg
+2026-07-04 21:47:43,770 INFO   label_value: BENIGN -> mapped_label: 0
+2026-07-04 21:47:43,771 INFO   matched: D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID4\4-bbb.jpg
+2026-07-04 21:47:43,771 INFO   reason: rel_map exact match for 'uid4/4-bbb.jpg'
+2026-07-04 21:47:43,772 INFO --- Resolver diagnostics summary ---
+2026-07-04 21:47:43,772 INFO   total metadata rows: 4
+2026-07-04 21:47:43,772 INFO   resolved rows: 4
+2026-07-04 21:47:43,773 INFO   failed rows: 0
+2026-07-04 21:47:43,773 INFO   resolution percentage: 100.00%
+2026-07-04 21:47:43,777 INFO Processed 0 rows
+2026-07-04 21:48:23,126 INFO Indexing JPEG images under D:\Downloads\breast-cancer-ai\mock_cbis\jpeg
+2026-07-04 21:48:23,129 INFO Indexed 4 image files
+2026-07-04 21:48:23,145 INFO Loaded mass_case_description_train_set.csv (4 rows)
+2026-07-04 21:49:19,783 INFO Indexing JPEG images under D:\Downloads\breast-cancer-ai\mock_cbis\jpeg
+2026-07-04 21:49:19,786 INFO Indexed 4 image files
+2026-07-04 21:49:19,789 INFO Preparing dataset from D:\Downloads\breast-cancer-ai\mock_cbis
+2026-07-04 21:49:19,804 INFO Loaded mass_case_description_train_set.csv (4 rows)
+2026-07-04 21:49:19,805 WARNING Missing metadata file, skipping: D:\Downloads\breast-cancer-ai\mock_cbis\csv\calc_case_description_train_set.csv
+2026-07-04 21:49:19,806 WARNING Missing metadata file, skipping: D:\Downloads\breast-cancer-ai\mock_cbis\csv\mass_case_description_test_set.csv
+2026-07-04 21:49:19,807 WARNING Missing metadata file, skipping: D:\Downloads\breast-cancer-ai\mock_cbis\csv\calc_case_description_test_set.csv
+2026-07-04 21:49:19,807 INFO Starting to build examples...
+2026-07-04 21:49:19,808 INFO === SINGLE ROW DEBUG TEST ===
+2026-07-04 21:49:19,809 INFO Resolver debug for metadata: jpeg/UID1/1-xxx.jpg
+2026-07-04 21:49:19,810 INFO   candidate=uid1/1-xxx.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID1\1-xxx.jpg reason=exact rel_map match
+2026-07-04 21:49:19,810 INFO   candidate=jpeg/uid1/1-xxx.jpg -> matched=None reason=no match in rel_map or name_map
+2026-07-04 21:49:19,810 INFO   candidate=1-xxx.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID1\1-xxx.jpg reason=unique name_map match
+2026-07-04 21:49:19,811 INFO TEST RESULT: (WindowsPath('D:/Downloads/breast-cancer-ai/mock_cbis/jpeg/UID1/1-xxx.jpg'), 1)
+2026-07-04 21:49:19,812 INFO --- Debug: first 10 metadata image identifiers ---
+2026-07-04 21:49:19,815 INFO   jpeg/UID1/1-xxx.jpg
+2026-07-04 21:49:19,815 INFO   jpeg/UID2/2-yyy.jpg
+2026-07-04 21:49:19,815 INFO   jpeg/UID3/3-aaa.jpg
+2026-07-04 21:49:19,816 INFO   jpeg/UID4/4-bbb.jpg
+2026-07-04 21:49:19,816 INFO --- Debug: first 10 indexed rel_map keys ---
+2026-07-04 21:49:19,817 INFO   uid1/1-xxx.jpg
+2026-07-04 21:49:19,817 INFO   uid2/2-yyy.jpg
+2026-07-04 21:49:19,817 INFO   uid3/3-aaa.jpg
+2026-07-04 21:49:19,818 INFO   uid4/4-bbb.jpg
+2026-07-04 21:49:19,818 INFO --- Debug: first 10 indexed filename keys ---
+2026-07-04 21:49:19,818 INFO   1-xxx.jpg
+2026-07-04 21:49:19,819 INFO   2-yyy.jpg
+2026-07-04 21:49:19,819 INFO   3-aaa.jpg
+2026-07-04 21:49:19,819 INFO   4-bbb.jpg
+2026-07-04 21:49:19,822 INFO --- Metadata row 1 diagnostics ---
+2026-07-04 21:49:19,822 INFO   image_file_path: jpeg/UID1/1-xxx.jpg
+2026-07-04 21:49:19,823 INFO   cropped_image_file_path: None
+2026-07-04 21:49:19,823 INFO   roi_mask_file_path: None
+2026-07-04 21:49:19,824 INFO   normalized_lookup_key: uid1/1-xxx.jpg
+2026-07-04 21:49:19,824 INFO   label_value: MALIGNANT -> mapped_label: 1
+2026-07-04 21:49:19,824 INFO   matched: D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID1\1-xxx.jpg
+2026-07-04 21:49:19,824 INFO   reason: rel_map exact match for 'uid1/1-xxx.jpg'
+2026-07-04 21:49:19,826 INFO --- Metadata row 2 diagnostics ---
+2026-07-04 21:49:19,826 INFO   image_file_path: jpeg/UID2/2-yyy.jpg
+2026-07-04 21:49:19,827 INFO   cropped_image_file_path: None
+2026-07-04 21:49:19,827 INFO   roi_mask_file_path: None
+2026-07-04 21:49:19,827 INFO   normalized_lookup_key: uid2/2-yyy.jpg
+2026-07-04 21:49:19,828 INFO   label_value: BENIGN -> mapped_label: 0
+2026-07-04 21:49:19,828 INFO   matched: D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID2\2-yyy.jpg
+2026-07-04 21:49:19,829 INFO   reason: rel_map exact match for 'uid2/2-yyy.jpg'
+2026-07-04 21:49:19,831 INFO --- Metadata row 3 diagnostics ---
+2026-07-04 21:49:19,832 INFO   image_file_path: jpeg/UID3/3-aaa.jpg
+2026-07-04 21:49:19,833 INFO   cropped_image_file_path: None
+2026-07-04 21:49:19,834 INFO   roi_mask_file_path: None
+2026-07-04 21:49:19,835 INFO   normalized_lookup_key: uid3/3-aaa.jpg
+2026-07-04 21:49:19,835 INFO   label_value: MALIGNANT -> mapped_label: 1
+2026-07-04 21:49:19,836 INFO   matched: D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID3\3-aaa.jpg
+2026-07-04 21:49:19,836 INFO   reason: rel_map exact match for 'uid3/3-aaa.jpg'
+2026-07-04 21:49:19,838 INFO --- Metadata row 4 diagnostics ---
+2026-07-04 21:49:19,838 INFO   image_file_path: jpeg/UID4/4-bbb.jpg
+2026-07-04 21:49:19,839 INFO   cropped_image_file_path: None
+2026-07-04 21:49:19,840 INFO   roi_mask_file_path: None
+2026-07-04 21:49:19,840 INFO   normalized_lookup_key: uid4/4-bbb.jpg
+2026-07-04 21:49:19,841 INFO   label_value: BENIGN -> mapped_label: 0
+2026-07-04 21:49:19,842 INFO   matched: D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID4\4-bbb.jpg
+2026-07-04 21:49:19,842 INFO   reason: rel_map exact match for 'uid4/4-bbb.jpg'
+2026-07-04 21:49:19,843 INFO --- Resolver diagnostics summary ---
+2026-07-04 21:49:19,843 INFO   total metadata rows: 4
+2026-07-04 21:49:19,844 INFO   resolved rows: 4
+2026-07-04 21:49:19,844 INFO   failed rows: 0
+2026-07-04 21:49:19,844 INFO   resolution percentage: 100.00%
+2026-07-04 21:49:19,846 INFO Processed 0 rows
+2026-07-04 21:49:19,847 INFO Resolver debug for metadata: jpeg/UID1/1-xxx.jpg
+2026-07-04 21:49:19,848 INFO   candidate=uid1/1-xxx.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID1\1-xxx.jpg reason=exact rel_map match
+2026-07-04 21:49:19,848 INFO   candidate=jpeg/uid1/1-xxx.jpg -> matched=None reason=no match in rel_map or name_map
+2026-07-04 21:49:19,849 INFO   candidate=1-xxx.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID1\1-xxx.jpg reason=unique name_map match
+2026-07-04 21:49:19,852 INFO Resolver debug for metadata: jpeg/UID2/2-yyy.jpg
+2026-07-04 21:49:19,852 INFO   candidate=uid2/2-yyy.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID2\2-yyy.jpg reason=exact rel_map match
+2026-07-04 21:49:19,853 INFO   candidate=jpeg/uid2/2-yyy.jpg -> matched=None reason=no match in rel_map or name_map
+2026-07-04 21:49:19,853 INFO   candidate=2-yyy.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID2\2-yyy.jpg reason=unique name_map match
+2026-07-04 21:49:19,855 INFO Resolver debug for metadata: jpeg/UID3/3-aaa.jpg
+2026-07-04 21:49:19,855 INFO   candidate=uid3/3-aaa.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID3\3-aaa.jpg reason=exact rel_map match
+2026-07-04 21:49:19,856 INFO   candidate=jpeg/uid3/3-aaa.jpg -> matched=None reason=no match in rel_map or name_map
+2026-07-04 21:49:19,856 INFO   candidate=3-aaa.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID3\3-aaa.jpg reason=unique name_map match
+2026-07-04 21:49:19,859 INFO Resolver debug for metadata: jpeg/UID4/4-bbb.jpg
+2026-07-04 21:49:19,859 INFO   candidate=uid4/4-bbb.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID4\4-bbb.jpg reason=exact rel_map match
+2026-07-04 21:49:19,860 INFO   candidate=jpeg/uid4/4-bbb.jpg -> matched=None reason=no match in rel_map or name_map
+2026-07-04 21:49:19,860 INFO   candidate=4-bbb.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID4\4-bbb.jpg reason=unique name_map match
+2026-07-04 21:49:19,862 INFO Total rows processed: 4
+2026-07-04 21:49:19,863 INFO Resolved rows: 4
+2026-07-04 21:49:19,864 INFO Valid samples collected: 4
+2026-07-04 21:49:19,864 INFO Skipped samples: 0
+2026-07-04 21:49:19,866 INFO Sample 0: ('D:\\Downloads\\breast-cancer-ai\\mock_cbis\\jpeg\\UID1\\1-xxx.jpg', 1)
+2026-07-04 21:49:19,866 INFO Sample 1: ('D:\\Downloads\\breast-cancer-ai\\mock_cbis\\jpeg\\UID2\\2-yyy.jpg', 0)
+2026-07-04 21:49:19,867 INFO Sample 2: ('D:\\Downloads\\breast-cancer-ai\\mock_cbis\\jpeg\\UID3\\3-aaa.jpg', 1)
+2026-07-04 21:49:19,867 INFO Sample 3: ('D:\\Downloads\\breast-cancer-ai\\mock_cbis\\jpeg\\UID4\\4-bbb.jpg', 0)
+2026-07-04 21:50:32,175 INFO Indexing JPEG images under D:\Downloads\breast-cancer-ai\mock_cbis\jpeg
+2026-07-04 21:50:32,179 INFO Indexed 4 image files
+2026-07-04 21:50:32,180 INFO Preparing dataset from D:\Downloads\breast-cancer-ai\mock_cbis
+2026-07-04 21:50:32,194 INFO Loaded mass_case_description_train_set.csv (4 rows)
+2026-07-04 21:50:32,195 WARNING Missing metadata file, skipping: D:\Downloads\breast-cancer-ai\mock_cbis\csv\calc_case_description_train_set.csv
+2026-07-04 21:50:32,197 WARNING Missing metadata file, skipping: D:\Downloads\breast-cancer-ai\mock_cbis\csv\mass_case_description_test_set.csv
+2026-07-04 21:50:32,197 WARNING Missing metadata file, skipping: D:\Downloads\breast-cancer-ai\mock_cbis\csv\calc_case_description_test_set.csv
+2026-07-04 21:50:32,199 INFO Starting to build examples...
+2026-07-04 21:50:32,200 INFO === SINGLE ROW DEBUG TEST ===
+2026-07-04 21:50:32,203 INFO Resolver debug for metadata: jpeg/UID1/1-xxx.jpg
+2026-07-04 21:50:32,204 INFO   candidate=uid1/1-xxx.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID1\1-xxx.jpg reason=exact rel_map match
+2026-07-04 21:50:32,204 INFO   candidate=jpeg/uid1/1-xxx.jpg -> matched=None reason=no match in rel_map or name_map
+2026-07-04 21:50:32,205 INFO   candidate=1-xxx.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID1\1-xxx.jpg reason=unique name_map match
+2026-07-04 21:50:32,206 INFO TEST RESULT: (WindowsPath('D:/Downloads/breast-cancer-ai/mock_cbis/jpeg/UID1/1-xxx.jpg'), 1)
+2026-07-04 21:50:32,207 INFO --- Debug: first 10 metadata image identifiers ---
+2026-07-04 21:50:32,210 INFO   jpeg/UID1/1-xxx.jpg
+2026-07-04 21:50:32,210 INFO   jpeg/UID2/2-yyy.jpg
+2026-07-04 21:50:32,211 INFO   jpeg/UID3/3-aaa.jpg
+2026-07-04 21:50:32,212 INFO   jpeg/UID4/4-bbb.jpg
+2026-07-04 21:50:32,212 INFO --- Debug: first 10 indexed rel_map keys ---
+2026-07-04 21:50:32,213 INFO   uid1/1-xxx.jpg
+2026-07-04 21:50:32,213 INFO   uid2/2-yyy.jpg
+2026-07-04 21:50:32,214 INFO   uid3/3-aaa.jpg
+2026-07-04 21:50:32,214 INFO   uid4/4-bbb.jpg
+2026-07-04 21:50:32,214 INFO --- Debug: first 10 indexed filename keys ---
+2026-07-04 21:50:32,215 INFO   1-xxx.jpg
+2026-07-04 21:50:32,215 INFO   2-yyy.jpg
+2026-07-04 21:50:32,216 INFO   3-aaa.jpg
+2026-07-04 21:50:32,216 INFO   4-bbb.jpg
+2026-07-04 21:50:32,219 INFO --- Metadata row 1 diagnostics ---
+2026-07-04 21:50:32,219 INFO   image_file_path: jpeg/UID1/1-xxx.jpg
+2026-07-04 21:50:32,220 INFO   cropped_image_file_path: None
+2026-07-04 21:50:32,220 INFO   roi_mask_file_path: None
+2026-07-04 21:50:32,221 INFO   normalized_lookup_key: uid1/1-xxx.jpg
+2026-07-04 21:50:32,221 INFO   label_value: MALIGNANT -> mapped_label: 1
+2026-07-04 21:50:32,222 INFO   matched: D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID1\1-xxx.jpg
+2026-07-04 21:50:32,222 INFO   reason: rel_map exact match for 'uid1/1-xxx.jpg'
+2026-07-04 21:50:32,226 INFO --- Metadata row 2 diagnostics ---
+2026-07-04 21:50:32,236 INFO   image_file_path: jpeg/UID2/2-yyy.jpg
+2026-07-04 21:50:32,237 INFO   cropped_image_file_path: None
+2026-07-04 21:50:32,237 INFO   roi_mask_file_path: None
+2026-07-04 21:50:32,238 INFO   normalized_lookup_key: uid2/2-yyy.jpg
+2026-07-04 21:50:32,238 INFO   label_value: BENIGN -> mapped_label: 0
+2026-07-04 21:50:32,239 INFO   matched: D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID2\2-yyy.jpg
+2026-07-04 21:50:32,240 INFO   reason: rel_map exact match for 'uid2/2-yyy.jpg'
+2026-07-04 21:50:32,243 INFO --- Metadata row 3 diagnostics ---
+2026-07-04 21:50:32,243 INFO   image_file_path: jpeg/UID3/3-aaa.jpg
+2026-07-04 21:50:32,244 INFO   cropped_image_file_path: None
+2026-07-04 21:50:32,244 INFO   roi_mask_file_path: None
+2026-07-04 21:50:32,244 INFO   normalized_lookup_key: uid3/3-aaa.jpg
+2026-07-04 21:50:32,245 INFO   label_value: MALIGNANT -> mapped_label: 1
+2026-07-04 21:50:32,245 INFO   matched: D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID3\3-aaa.jpg
+2026-07-04 21:50:32,246 INFO   reason: rel_map exact match for 'uid3/3-aaa.jpg'
+2026-07-04 21:50:32,248 INFO --- Metadata row 4 diagnostics ---
+2026-07-04 21:50:32,249 INFO   image_file_path: jpeg/UID4/4-bbb.jpg
+2026-07-04 21:50:32,249 INFO   cropped_image_file_path: None
+2026-07-04 21:50:32,250 INFO   roi_mask_file_path: None
+2026-07-04 21:50:32,250 INFO   normalized_lookup_key: uid4/4-bbb.jpg
+2026-07-04 21:50:32,251 INFO   label_value: BENIGN -> mapped_label: 0
+2026-07-04 21:50:32,251 INFO   matched: D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID4\4-bbb.jpg
+2026-07-04 21:50:32,251 INFO   reason: rel_map exact match for 'uid4/4-bbb.jpg'
+2026-07-04 21:50:32,252 INFO --- Resolver diagnostics summary ---
+2026-07-04 21:50:32,253 INFO   total metadata rows: 4
+2026-07-04 21:50:32,253 INFO   resolved rows: 4
+2026-07-04 21:50:32,253 INFO   failed rows: 0
+2026-07-04 21:50:32,254 INFO   resolution percentage: 100.00%
+2026-07-04 21:50:32,255 INFO Processed 0 rows
+2026-07-04 21:50:32,257 INFO Resolver debug for metadata: jpeg/UID1/1-xxx.jpg
+2026-07-04 21:50:32,258 INFO   candidate=uid1/1-xxx.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID1\1-xxx.jpg reason=exact rel_map match
+2026-07-04 21:50:32,258 INFO   candidate=jpeg/uid1/1-xxx.jpg -> matched=None reason=no match in rel_map or name_map
+2026-07-04 21:50:32,259 INFO   candidate=1-xxx.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID1\1-xxx.jpg reason=unique name_map match
+2026-07-04 21:50:32,261 INFO Resolver debug for metadata: jpeg/UID2/2-yyy.jpg
+2026-07-04 21:50:32,262 INFO   candidate=uid2/2-yyy.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID2\2-yyy.jpg reason=exact rel_map match
+2026-07-04 21:50:32,262 INFO   candidate=jpeg/uid2/2-yyy.jpg -> matched=None reason=no match in rel_map or name_map
+2026-07-04 21:50:32,263 INFO   candidate=2-yyy.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID2\2-yyy.jpg reason=unique name_map match
+2026-07-04 21:50:32,265 INFO Resolver debug for metadata: jpeg/UID3/3-aaa.jpg
+2026-07-04 21:50:32,266 INFO   candidate=uid3/3-aaa.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID3\3-aaa.jpg reason=exact rel_map match
+2026-07-04 21:50:32,266 INFO   candidate=jpeg/uid3/3-aaa.jpg -> matched=None reason=no match in rel_map or name_map
+2026-07-04 21:50:32,267 INFO   candidate=3-aaa.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID3\3-aaa.jpg reason=unique name_map match
+2026-07-04 21:50:32,269 INFO Resolver debug for metadata: jpeg/UID4/4-bbb.jpg
+2026-07-04 21:50:32,270 INFO   candidate=uid4/4-bbb.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID4\4-bbb.jpg reason=exact rel_map match
+2026-07-04 21:50:32,270 INFO   candidate=jpeg/uid4/4-bbb.jpg -> matched=None reason=no match in rel_map or name_map
+2026-07-04 21:50:32,270 INFO   candidate=4-bbb.jpg -> matched=D:\Downloads\breast-cancer-ai\mock_cbis\jpeg\UID4\4-bbb.jpg reason=unique name_map match
+2026-07-04 21:50:32,271 INFO Total rows processed: 4
+2026-07-04 21:50:32,272 INFO Resolved rows: 4
+2026-07-04 21:50:32,272 INFO Valid samples collected: 4
+2026-07-04 21:50:32,273 INFO Skipped samples: 0
+2026-07-04 21:50:32,273 INFO Sample 0: ('D:\\Downloads\\breast-cancer-ai\\mock_cbis\\jpeg\\UID1\\1-xxx.jpg', 1)
+2026-07-04 21:50:32,274 INFO Sample 1: ('D:\\Downloads\\breast-cancer-ai\\mock_cbis\\jpeg\\UID2\\2-yyy.jpg', 0)
+2026-07-04 21:50:32,274 INFO Sample 2: ('D:\\Downloads\\breast-cancer-ai\\mock_cbis\\jpeg\\UID3\\3-aaa.jpg', 1)
+2026-07-04 21:50:32,275 INFO Sample 3: ('D:\\Downloads\\breast-cancer-ai\\mock_cbis\\jpeg\\UID4\\4-bbb.jpg', 0)
+2026-07-04 21:50:32,280 WARNING Adjusted validation split from 0.150 to 0.500 to keep stratification valid for 2 classes.
+2026-07-04 21:50:32,365 INFO Train distribution: {1: 1, 0: 1}
+2026-07-04 21:50:32,366 INFO Val distribution: {1: 1, 0: 1}
+2026-07-04 21:50:32,367 INFO Train samples: 2
+2026-07-04 21:50:32,367 INFO Val samples: 2
