@@ -254,14 +254,24 @@ def main():
     model = build_model(device)
     criterion = FocalLoss(class_weights=class_weights)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="max",
+        factor=0.5,
+        patience=2,
+        threshold=1e-4,
+        min_lr=1e-6,
+    )
     scaler = torch.cuda.amp.GradScaler(enabled=torch.cuda.is_available())
     early_stopping = EarlyStopping(patience=args.patience)
 
     for epoch in range(args.epochs):
         train_loss = train_one_epoch(model, criterion, optimizer, train_loader, device, scaler)
         val_auc = validate_with_auc(model, val_loader, device)
+        scheduler.step(val_auc)
+        current_lr = optimizer.param_groups[0]["lr"]
 
-        print(f"Epoch {epoch + 1}/{args.epochs} | Loss: {train_loss:.4f} | Val AUC: {val_auc:.4f}")
+        print(f"Epoch {epoch + 1}/{args.epochs} | Loss: {train_loss:.4f} | Val AUC: {val_auc:.4f} | LR={current_lr:.6f}")
 
         torch.save(model.state_dict(), args.output_dir / f"effnet_b0_epoch_{epoch + 1}.pth")
         save_best_model(model, val_auc, args.output_dir)
