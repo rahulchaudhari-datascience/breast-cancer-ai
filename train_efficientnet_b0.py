@@ -57,18 +57,23 @@ class CBISDataset(Dataset):
 def get_transforms():
     train_transforms = [
         transforms.Resize((224, 224)),
-    ]
-    if ENABLE_HORIZONTAL_FLIP:
-        # Horizontal flipping should be clinically validated for mammography datasets.
-        train_transforms.append(transforms.RandomHorizontalFlip())
-    train_transforms.extend([
-        transforms.RandomRotation(10),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomRotation(degrees=10),
+        transforms.RandomAffine(
+            degrees=0,
+            translate=(0.05, 0.05),
+            scale=(0.95, 1.05),
+        ),
+        transforms.ColorJitter(
+            brightness=0.05,
+            contrast=0.05,
+        ),
         transforms.ToTensor(),
         transforms.Normalize(
             mean=[0.485, 0.456, 0.406],
             std=[0.229, 0.224, 0.225],
         ),
-    ])
+    ]
 
     train_tfms = transforms.Compose(train_transforms)
 
