@@ -388,6 +388,11 @@ class CBISDDMSplitter:
                         break
 
         if not image_value:
+            if self.debug:
+                self._debug_fail_count = getattr(self, "_debug_fail_count", 0)
+                if self._debug_fail_count < 20:
+                    self.logger.info("FAIL [NO IMAGE] row missing image reference")
+                    self._debug_fail_count += 1
             return None
 
         label_value = None
@@ -423,6 +428,11 @@ class CBISDDMSplitter:
 
         label = infer_label_from_text(label_value)
         if label is None:
+            if self.debug:
+                self._debug_fail_count = getattr(self, "_debug_fail_count", 0)
+                if self._debug_fail_count < 20:
+                    self.logger.info("FAIL [LABEL] label_value=%s", label_value)
+                    self._debug_fail_count += 1
             return None
 
         img_path = self._resolve_image(image_value)
@@ -464,12 +474,12 @@ class CBISDDMSplitter:
                 self.logger.info("  candidate=%s -> matched=%s reason=%s", cand, str(matched) if matched is not None else None, reason)
 
         if img_path is None:
-            print("=" * 80)
-            print("IMAGE VALUE :", image_value)
-            print("LABEL VALUE :", label_value)
-            print("LABEL       :", label)
-            print("IMG PATH    :", img_path)
-            self.logger.debug("Could not resolve image for metadata value: %s", image_value)
+            if self.debug:
+                self._debug_fail_count = getattr(self, "_debug_fail_count", 0)
+                if self._debug_fail_count < 20:
+                    self.logger.info("FAIL [RESOLVER] image=%s", image_value)
+                    self.logger.debug("Could not resolve image for metadata value: %s", image_value)
+                    self._debug_fail_count += 1
             return None
 
         return img_path.resolve(), label
@@ -483,10 +493,11 @@ class CBISDDMSplitter:
 
         self.logger.info("Starting to build examples...")
 
-        self.logger.info("=== SINGLE ROW DEBUG TEST ===")
-        row = train_meta.iloc[0]
-        res = self._infer_image_and_label_from_row(row)
-        self.logger.info("TEST RESULT: %s", res)
+        if self.debug:
+            self.logger.info("=== SINGLE ROW DEBUG TEST ===")
+            row = train_meta.iloc[0]
+            res = self._infer_image_and_label_from_row(row)
+            self.logger.info("TEST RESULT: %s", res)
 
         # If debug mode is enabled, run a diagnostics pass that also builds examples.
         if self.debug:
@@ -602,15 +613,16 @@ class CBISDDMSplitter:
                 else:
                     failed_rows += 1
 
-                # Log per-row diagnostics
-                self.logger.info("--- Metadata row %d diagnostics ---", total_rows)
-                self.logger.info("  image_file_path: %s", image_fp)
-                self.logger.info("  cropped_image_file_path: %s", cropped_fp)
-                self.logger.info("  roi_mask_file_path: %s", roi_fp)
-                self.logger.info("  normalized_lookup_key: %s", normalized_key)
-                self.logger.info("  label_value: %s -> mapped_label: %s", label_value, label)
-                self.logger.info("  matched: %s", matched_path)
-                self.logger.info("  reason: %s", reason)
+                if total_rows <= 20:
+                    # Log per-row diagnostics only for first 20 rows
+                    self.logger.info("--- Metadata row %d diagnostics ---", total_rows)
+                    self.logger.info("  image_file_path: %s", image_fp)
+                    self.logger.info("  cropped_image_file_path: %s", cropped_fp)
+                    self.logger.info("  roi_mask_file_path: %s", roi_fp)
+                    self.logger.info("  normalized_lookup_key: %s", normalized_key)
+                    self.logger.info("  label_value: %s -> mapped_label: %s", label_value, label)
+                    self.logger.info("  matched: %s", matched_path)
+                    self.logger.info("  reason: %s", reason)
 
             # Summary
             self.logger.info("--- Resolver diagnostics summary ---")
@@ -636,6 +648,8 @@ class CBISDDMSplitter:
             if i % 1000 == 0:
                 self.logger.info("Processed %d rows", i)
             res = self._infer_image_and_label_from_row(row)
+            if self.debug and i < 20:
+                self.logger.info("ROW %d RESULT = %s", i, res)
             if res is None:
                 continue
             resolved_rows += 1
