@@ -667,8 +667,9 @@ class CBISDDMSplitter:
         self.logger.info("Resolved rows: %d", resolved_rows)
         self.logger.info("Valid samples collected: %d", len(examples))
         self.logger.info("Skipped samples: %d", processed_rows - resolved_rows)
-        for i, sample in enumerate(examples[:10]):
-            self.logger.info("Sample %d: %s", i, sample)
+        if self.debug:
+            for i, sample in enumerate(examples[:10]):
+                self.logger.info("Sample %d: %s", i, sample)
         assert examples, "No valid examples found - UID mapping still broken"
 
         df = pd.DataFrame(examples, columns=["image_path", "label"])
