@@ -253,11 +253,7 @@ def main():
 
     model = build_model(device)
     criterion = FocalLoss(class_weights=class_weights)
-    optimizer = torch.optim.Adam(
-        model.parameters(),
-        lr=args.lr,
-        weight_decay=1e-4,
-    )
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
         mode="max",
