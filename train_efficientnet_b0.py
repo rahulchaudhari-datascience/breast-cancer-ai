@@ -56,7 +56,7 @@ class CBISDataset(Dataset):
 
 def get_transforms():
     train_transforms = [
-        transforms.Resize((224, 224)),
+        transforms.Resize((260, 260)),
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.RandomRotation(degrees=10),
         transforms.RandomAffine(
