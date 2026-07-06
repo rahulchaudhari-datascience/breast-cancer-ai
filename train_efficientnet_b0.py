@@ -131,13 +131,12 @@ def save_best_model(model: nn.Module, val_auc: float, output_dir: Path) -> None:
     global best_auc
     if val_auc > best_auc:
         best_auc = val_auc
-        output_path = output_dir / "effnet_best.pth"
+        output_path = output_dir / "effnet_b2_best.pth"
         torch.save(model.state_dict(), output_path)
         print(f"New best AUC: {val_auc:.4f}. Saved best model to {output_path}")
 
-
 def build_model(device: torch.device) -> nn.Module:
-    model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
+    model = models.efficientnet_b2(weights=models.EfficientNet_B2_Weights.IMAGENET1K_V1)
     model.classifier[1] = nn.Linear(model.classifier[1].in_features, 2)
     return model.to(device)
 
@@ -223,7 +222,7 @@ class EarlyStopping:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Train EfficientNet-B0 on CBIS-DDSM annotations.")
+    parser = argparse.ArgumentParser(description="Train EfficientNet-B2 on CBIS-DDSM annotations.")
     parser.add_argument("--train-csv", type=str, default="datasets/annotations/train.csv")
     parser.add_argument("--val-csv", type=str, default="datasets/annotations/val.csv")
     parser.add_argument("--batch-size", type=int, default=16)
@@ -278,7 +277,7 @@ def main():
 
         print(f"Epoch {epoch + 1}/{args.epochs} | Loss: {train_loss:.4f} | Val AUC: {val_auc:.4f} | LR={current_lr:.6f}")
 
-        torch.save(model.state_dict(), args.output_dir / f"effnet_b0_epoch_{epoch + 1}.pth")
+        torch.save(model.state_dict(), args.output_dir / f"effnet_b2_epoch_{epoch + 1}.pth")
         save_best_model(model, val_auc, args.output_dir)
 
         if early_stopping.step(val_auc):
