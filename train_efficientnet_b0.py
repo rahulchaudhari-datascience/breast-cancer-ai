@@ -78,7 +78,7 @@ def get_transforms():
     train_tfms = transforms.Compose(train_transforms)
 
     val_tfms = transforms.Compose([
-        transforms.Resize((224, 224)),
+        transforms.Resize((260, 260)),
         transforms.ToTensor(),
         transforms.Normalize(
             mean=[0.485, 0.456, 0.406],
