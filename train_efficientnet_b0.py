@@ -58,15 +58,16 @@ def get_transforms():
     train_transforms = [
         transforms.Resize((224, 224)),
         transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomRotation(degrees=10),
+        transforms.RandomVerticalFlip(p=0.2),
+        transforms.RandomRotation(15),
         transforms.RandomAffine(
             degrees=0,
-            translate=(0.05, 0.05),
-            scale=(0.95, 1.05),
+            translate=(0.08, 0.08),
+            scale=(0.9, 1.1),
         ),
         transforms.ColorJitter(
-            brightness=0.05,
-            contrast=0.05,
+            brightness=0.10,
+            contrast=0.10,
         ),
         transforms.ToTensor(),
         transforms.Normalize(
@@ -165,7 +166,10 @@ def train_one_epoch(model, criterion, optimizer, loader, device, scaler):
 
         optimizer.zero_grad(set_to_none=True)
 
-        with torch.cuda.amp.autocast(enabled=torch.cuda.is_available()):
+        with torch.amp.autocast(
+            device_type="cuda",
+            enabled=torch.cuda.is_available(),
+        ):
             outputs = model(images)
             loss = criterion(outputs, labels)
 
@@ -206,7 +210,7 @@ def validate_with_auc(model, loader, device):
 
 
 class EarlyStopping:
-    def __init__(self, patience: int = 3):
+    def __init__(self, patience: int = 5):
         self.patience = patience
         self.best_auc = 0.0
         self.counter = 0
@@ -229,7 +233,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=15)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--patience", type=int, default=3)
+    parser.add_argument("--patience", type=int, default=5)
     parser.add_argument("--output-dir", type=Path, default=Path("models"))
     args = parser.parse_args()
 
@@ -257,7 +261,11 @@ def main():
 
     model = build_model(device)
     criterion = FocalLoss(class_weights=class_weights)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=args.lr,
+        weight_decay=1e-4,
+    )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
         mode="max",
@@ -266,7 +274,10 @@ def main():
         threshold=1e-4,
         min_lr=1e-6,
     )
-    scaler = torch.cuda.amp.GradScaler(enabled=torch.cuda.is_available())
+    scaler = torch.amp.GradScaler(
+        "cuda",
+        enabled=torch.cuda.is_available(),
+    )
     early_stopping = EarlyStopping(patience=args.patience)
 
     for epoch in range(args.epochs):
@@ -284,6 +295,14 @@ def main():
             print("Early stopping triggered")
             break
 
+    print("Training configuration summary:")
+    print("✓ EfficientNet-B0")
+    print("✓ AdamW")
+    print("✓ Weight decay = 1e-4")
+    print("✓ EarlyStopping patience = 5")
+    print("✓ Improved augmentations")
+    print("✓ AMP updated")
+    print("✓ Scheduler unchanged")
     print("Training complete. Checkpoints saved in:", args.output_dir)
 
 
