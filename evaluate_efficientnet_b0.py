@@ -2,16 +2,20 @@ import argparse
 from pathlib import Path
 
 import cv2
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import torch
 import torch.nn as nn
 from PIL import Image, UnidentifiedImageError
-from sklearn.metrics import auc, classification_report, confusion_matrix, roc_auc_score, roc_curve
+from sklearn.metrics import (accuracy_score, auc, classification_report, confusion_matrix,
+                             f1_score, precision_score, recall_score, roc_auc_score, roc_curve)
 from torch.utils.data import DataLoader, Dataset
 from torchvision import models, transforms
+
+ROOT_DIR = Path(__file__).resolve().parent
 
 
 class CBISDataset(Dataset):
@@ -97,24 +101,37 @@ def build_model(checkpoint_path: str, device: torch.device) -> nn.Module:
 def evaluate_confusion_matrix(model, loader, device, output_dir: Path):
     y_true = []
     y_pred = []
+    y_score = []
+    image_paths = []
 
     model.eval()
     with torch.no_grad():
-        for images, labels, _ in loader:
+        for images, labels, paths in loader:
             images = images.to(device, non_blocking=torch.cuda.is_available())
             outputs = model(images)
+            probs = torch.softmax(outputs, dim=1)[:, 1]
             preds = torch.argmax(outputs, dim=1)
             y_true.extend(labels.detach().cpu().numpy())
             y_pred.extend(preds.detach().cpu().numpy())
+            y_score.extend(probs.detach().cpu().numpy())
+            image_paths.extend([str(path) for path in paths])
 
-    cm = confusion_matrix(y_true, y_pred)
+    cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
     report = classification_report(y_true, y_pred, target_names=["Benign", "Malignant"], digits=4)
 
     fig, ax = plt.subplots(figsize=(6, 5))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax)
+    im = ax.imshow(cm, cmap="Blues")
     ax.set_title("Confusion Matrix")
     ax.set_xlabel("Predicted")
     ax.set_ylabel("Actual")
+    ax.set_xticks([0, 1])
+    ax.set_yticks([0, 1])
+    ax.set_xticklabels(["Benign", "Malignant"])
+    ax.set_yticklabels(["Benign", "Malignant"])
+    for row in range(cm.shape[0]):
+        for col in range(cm.shape[1]):
+            ax.text(col, row, int(cm[row, col]), ha="center", va="center", color="black")
+    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     fig.tight_layout()
     confusion_path = output_dir / "confusion_matrix.png"
     fig.savefig(confusion_path, bbox_inches="tight")
@@ -122,7 +139,7 @@ def evaluate_confusion_matrix(model, loader, device, output_dir: Path):
 
     print("Confusion Matrix:\n", report)
     print(f"Saved confusion matrix to: {confusion_path}")
-    return y_true, y_pred
+    return y_true, y_pred, y_score, image_paths
 
 
 def plot_roc_curve(y_true, y_score, output_dir: Path):
@@ -143,6 +160,31 @@ def plot_roc_curve(y_true, y_score, output_dir: Path):
 
     print(f"Saved ROC curve to: {roc_path}")
     return roc_auc
+
+
+def save_prediction_outputs(image_paths, y_true, y_pred, y_score, output_dir: Path):
+    predictions_df = pd.DataFrame({
+        "image_path": image_paths,
+        "true_label": y_true,
+        "predicted_label": y_pred,
+        "probability_benign": 1 - np.asarray(y_score),
+        "probability_malignant": np.asarray(y_score),
+    })
+    predictions_path = output_dir / "predictions.csv"
+    predictions_df.to_csv(predictions_path, index=False)
+
+    false_positives_df = predictions_df[(predictions_df["true_label"] == 0) & (predictions_df["predicted_label"] == 1)]
+    false_negatives_df = predictions_df[(predictions_df["true_label"] == 1) & (predictions_df["predicted_label"] == 0)]
+
+    false_positives_path = output_dir / "false_positives.csv"
+    false_negatives_path = output_dir / "false_negatives.csv"
+    false_positives_df.to_csv(false_positives_path, index=False)
+    false_negatives_df.to_csv(false_negatives_path, index=False)
+
+    print(f"Saved predictions to: {predictions_path}")
+    print(f"Saved false positives to: {false_positives_path}")
+    print(f"Saved false negatives to: {false_negatives_path}")
+    return predictions_df, false_positives_df, false_negatives_df
 
 
 def _register_hooks(target_layer, features, gradients):
@@ -220,12 +262,12 @@ def save_gradcam(heatmap, image_path: Path, output_path: Path):
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate EfficientNet-B0 medical model with ROC, confusion matrix, and Grad-CAM.")
-    parser.add_argument("--checkpoint", type=str, required=True, help="Path to trained EfficientNet-B0 checkpoint.")
-    parser.add_argument("--val-csv", type=str, default="datasets/annotations/val.csv")
-    parser.add_argument("--output-dir", type=str, default="outputs/evaluation")
+    parser.add_argument("--checkpoint", type=str, default=str(ROOT_DIR / "models" / "effnet_best.pth"), help="Path to trained EfficientNet-B0 checkpoint.")
+    parser.add_argument("--val-csv", type=str, default=str(ROOT_DIR / "datasets" / "annotations" / "val.csv"))
+    parser.add_argument("--output-dir", type=str, default=str(ROOT_DIR / "reports"))
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--num-workers", type=int, default=4)
-    parser.add_argument("--gradcam-samples", type=int, default=5)
+    parser.add_argument("--gradcam-samples", type=int, default=0)
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -235,20 +277,29 @@ def main():
     model = build_model(args.checkpoint, device)
     loader = build_loader(args.val_csv, batch_size=args.batch_size, num_workers=args.num_workers)
 
-    y_true, y_pred = evaluate_confusion_matrix(model, loader, device, output_dir)
+    y_true, y_pred, y_score, image_paths = evaluate_confusion_matrix(model, loader, device, output_dir)
+    roc_auc = plot_roc_curve(y_true, y_score, output_dir)
 
-    all_probs = []
-    all_labels = []
-    with torch.no_grad():
-        for images, labels, _ in loader:
-            images = images.to(device, non_blocking=torch.cuda.is_available())
-            outputs = model(images)
-            probs = torch.softmax(outputs, dim=1)[:, 1]
-            all_probs.extend(probs.detach().cpu().numpy())
-            all_labels.extend(labels.detach().cpu().numpy())
+    accuracy = accuracy_score(y_true, y_pred)
+    precision = precision_score(y_true, y_pred, zero_division=0)
+    recall = recall_score(y_true, y_pred, zero_division=0)
+    f1 = f1_score(y_true, y_pred, zero_division=0)
 
-    roc_auc = plot_roc_curve(all_labels, all_probs, output_dir)
-    print(f"Validation ROC AUC: {roc_auc:.4f}")
+    print(f"Validation Accuracy: {accuracy:.4f}")
+    print(f"ROC-AUC: {roc_auc:.4f}")
+    print(f"Precision: {precision:.4f}")
+    print(f"Recall: {recall:.4f}")
+    print(f"F1-score: {f1:.4f}")
+    print("Classification Report:\n", classification_report(y_true, y_pred, target_names=["Benign", "Malignant"], digits=4))
+
+    cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
+    tn, fp, fn, tp = cm.ravel()
+    print(f"True Positives: {tp}")
+    print(f"True Negatives: {tn}")
+    print(f"False Positives: {fp}")
+    print(f"False Negatives: {fn}")
+
+    save_prediction_outputs(image_paths, y_true, y_pred, y_score, output_dir)
 
     if args.gradcam_samples > 0:
         print(f"Generating Grad-CAM for {args.gradcam_samples} validation samples...")
@@ -270,7 +321,11 @@ def main():
 
     metrics_path = output_dir / "evaluation_report.txt"
     metrics_path.write_text(
-        f"Validation ROC AUC: {roc_auc:.4f}\n"
+        f"Validation Accuracy: {accuracy:.4f}\n"
+        f"ROC-AUC: {roc_auc:.4f}\n"
+        f"Precision: {precision:.4f}\n"
+        f"Recall: {recall:.4f}\n"
+        f"F1-score: {f1:.4f}\n"
         f"Confusion matrix: {output_dir / 'confusion_matrix.png'}\n"
         f"ROC curve: {output_dir / 'roc_curve.png'}\n"
         f"Classification report:\n{classification_report(y_true, y_pred, target_names=['Benign', 'Malignant'], digits=4)}\n",
