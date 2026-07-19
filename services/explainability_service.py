@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional
+import logging
 
 import cv2
 import numpy as np
@@ -9,6 +10,8 @@ import torch
 
 from pytorch_grad_cam import GradCAMPlusPlus
 from pytorch_grad_cam.utils.image import show_cam_on_image
+
+from services._shared import get_service_logger, normalize_uint8_image
 
 from config import (
     DEVICE,
@@ -18,10 +21,9 @@ from config import (
 
 
 class ExplainabilityService:
-    """
-    Grad-CAM++ explainability service (hardened).
+    """Grad-CAM++ explainability service.
 
-    Returns None when explainability cannot be produced so calling pipelines
+    Returns ``None`` when explainability cannot be produced so calling pipelines
     can continue producing inference results.
     """
 
@@ -30,6 +32,7 @@ class ExplainabilityService:
         model: torch.nn.Module,
         target_layer: Optional[torch.nn.Module] = None,
     ):
+        self.logger = get_service_logger(self.__class__.__name__)
         self.device = DEVICE
         self.model = model.to(self.device)
         self.model.eval()
@@ -53,7 +56,7 @@ class ExplainabilityService:
         try:
             cam = GradCAMPlusPlus(model=self.model, target_layers=[self.target_layer])
         except Exception as exc:
-            print(f"[WARNING] Failed to initialize GradCAM++: {exc}")
+            self.logger.warning("Failed to initialize GradCAM++: %s", exc)
             return None
 
         targets = None
@@ -68,14 +71,14 @@ class ExplainabilityService:
         try:
             grayscale_cam = cam(input_tensor=input_tensor, targets=targets)[0]
         except Exception as exc:
-            print(f"[WARNING] GradCAM++ generation failed: {exc}")
+            self.logger.warning("GradCAM++ generation failed: %s", exc)
             return None
 
         try:
             rgb_roi = self._prepare_rgb_for_overlay(roi)
             heatmap = show_cam_on_image(rgb_roi, grayscale_cam, use_rgb=True)
         except Exception as exc:
-            print(f"[WARNING] Failed to render heatmap overlay: {exc}")
+            self.logger.warning("Failed to render heatmap overlay: %s", exc)
             return None
 
         if save_path is None:
@@ -84,11 +87,12 @@ class ExplainabilityService:
         try:
             self.save_heatmap(heatmap, save_path)
         except Exception as exc:
-            print(f"[WARNING] Could not save heatmap: {exc}")
+            self.logger.warning("Could not save heatmap: %s", exc)
 
         return heatmap
 
     def _preprocess_roi(self, roi: np.ndarray) -> torch.Tensor:
+        """Apply the fixed explainability preprocessing path."""
         roi = self._ensure_rgb(roi)
 
         roi = cv2.resize(roi, (IMAGE_SIZE, IMAGE_SIZE))
@@ -105,6 +109,7 @@ class ExplainabilityService:
         return tensor.to(self.device)
 
     def _prepare_rgb_for_overlay(self, roi: np.ndarray) -> np.ndarray:
+        """Prepare a normalized RGB image for Grad-CAM overlay rendering."""
         roi = self._ensure_rgb(roi)
         roi = cv2.resize(roi, (IMAGE_SIZE, IMAGE_SIZE))
         roi = roi.astype(np.float32)
@@ -113,6 +118,7 @@ class ExplainabilityService:
         return roi
 
     def _ensure_rgb(self, roi: np.ndarray) -> np.ndarray:
+        """Normalize grayscale or RGBA inputs to RGB."""
         if roi is None:
             raise ValueError("ROI image is None.")
 
@@ -127,6 +133,7 @@ class ExplainabilityService:
         return roi
 
     def _auto_find_target_layer(self):
+        """Select the last convolution layer as the default Grad-CAM target."""
         last_layer = None
         for module in self.model.modules():
             if isinstance(module, torch.nn.Conv2d):
@@ -138,20 +145,14 @@ class ExplainabilityService:
         return last_layer
 
     def save_heatmap(self, heatmap: np.ndarray, save_path: str) -> str:
+        """Persist a Grad-CAM heatmap to disk and return the written path."""
         if heatmap is None:
             raise ValueError("Heatmap is None; nothing to save.")
 
         save_path = Path(save_path)
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
-        hm = heatmap
-        # Convert float [0,1] to uint8 [0,255]
-        if hm.dtype != np.uint8:
-            try:
-                hm = np.clip(hm, 0.0, 1.0)
-                hm = (hm * 255).astype(np.uint8)
-            except Exception:
-                hm = np.clip(hm, 0, 255).astype(np.uint8)
+        hm = normalize_uint8_image(heatmap)
 
         # Ensure 3 channel RGB
         if hm.ndim == 2:

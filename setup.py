@@ -1,50 +1,54 @@
-"""
-Setup and validation script for Breast Cancer AI inference environment.
+"""Setup and validation script for the Breast Cancer AI project.
 
-Usage:
-    python setup.py check       # Validate setup
-    python setup.py install     # Install dependencies
-    python setup.py serve       # Start API server
+This script keeps the existing convenience commands used by the repository:
+`check`, `install`, `serve`, and `ui`.
 """
 
-import sys
+from __future__ import annotations
+
+import argparse
 import subprocess
+import sys
 from pathlib import Path
 
 
-def check_models():
-    """Check if trained models exist."""
+PROJECT_NAME = "Breast Cancer AI"
+DEFAULT_MODELS = ("classification_model.pth", "segmentation_model.pth")
+AVAILABLE_COMMANDS = ("check", "install", "serve", "ui")
+
+
+def check_models() -> bool:
+    """Check whether the expected trained model files exist."""
     models_dir = Path("models")
-    required = ["classification_model.pth", "segmentation_model.pth"]
-    
+
     print("\n[Models Check]")
     missing = []
-    for model in required:
-        path = models_dir / model
+    for model_name in DEFAULT_MODELS:
+        path = models_dir / model_name
         if path.exists():
             size_mb = path.stat().st_size / 1024**2
-            print(f"  ✓ {model} ({size_mb:.1f} MB)")
+            print(f"  ✓ {model_name} ({size_mb:.1f} MB)")
         else:
-            missing.append(model)
-            print(f"  ✗ {model} NOT FOUND")
-    
+            missing.append(model_name)
+            print(f"  ✗ {model_name} NOT FOUND")
+
     if missing:
-        print(f"\n  Action: Train models in Google Colab (see notebooks/COLAB_TRAINING.md)")
+        print("\n  Action: Train models in Google Colab (see notebooks/COLAB_TRAINING.md)")
         print(f"         Then download {', '.join(missing)} to ./models/")
         return False
-    
+
     return True
 
 
-def check_environment():
-    """Check Python environment."""
+def check_environment() -> None:
+    """Print the active Python interpreter information."""
     print("\n[Environment Check]")
     print(f"  Python: {sys.version.split()[0]}")
     print(f"  Location: {sys.executable}")
 
 
-def check_dependencies():
-    """Check if key packages are installed."""
+def check_dependencies() -> None:
+    """Check whether the key runtime dependencies are importable."""
     print("\n[Dependencies Check]")
     packages = [
         "torch",
@@ -57,7 +61,7 @@ def check_dependencies():
         "fastapi",
         "streamlit",
     ]
-    
+
     for pkg in packages:
         try:
             __import__(pkg.replace("_", "-").split("_")[0])
@@ -66,22 +70,22 @@ def check_dependencies():
             print(f"  ✗ {pkg} NOT INSTALLED")
 
 
-def install_dependencies():
+def install_dependencies() -> None:
     """Install dependencies from requirements.txt."""
     print("\n[Installing Dependencies]")
     subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
 
 
-def check_all():
-    """Run all checks."""
+def check_all() -> None:
+    """Run the environment, dependency, and model checks."""
     print("=" * 60)
-    print("Breast Cancer AI — Setup Validation")
+    print(f"{PROJECT_NAME} — Setup Validation")
     print("=" * 60)
-    
+
     check_environment()
     check_dependencies()
     has_models = check_models()
-    
+
     print("\n" + "=" * 60)
     if has_models:
         print("✓ Setup is complete! Run: streamlit run app.py")
@@ -90,7 +94,7 @@ def check_all():
     print("=" * 60)
 
 
-def serve():
+def serve() -> None:
     """Start the FastAPI server."""
     print("\n[Starting API Server]")
     print("  Uvicorn: http://127.0.0.1:8000")
@@ -105,24 +109,46 @@ def serve():
     ])
 
 
-def serve_ui():
+def serve_ui() -> None:
     """Start the Streamlit UI."""
     print("\n[Starting Streamlit UI]")
     print("  http://127.0.0.1:8501")
     subprocess.run([sys.executable, "-m", "streamlit", "run", "app.py"])
 
 
-if __name__ == "__main__":
-    cmd = sys.argv[1] if len(sys.argv) > 1 else "check"
-    
-    if cmd == "check":
+def build_parser() -> argparse.ArgumentParser:
+    """Create the CLI parser used by the setup helper."""
+    parser = argparse.ArgumentParser(
+        description=f"{PROJECT_NAME} setup and validation helper.",
+    )
+    parser.add_argument(
+        "command",
+        nargs="?",
+        default="check",
+        help="Command to run (default: check).",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Dispatch the selected setup command."""
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.command == "check":
         check_all()
-    elif cmd == "install":
+    elif args.command == "install":
         install_dependencies()
-    elif cmd == "serve":
+    elif args.command == "serve":
         serve()
-    elif cmd == "ui":
+    elif args.command == "ui":
         serve_ui()
     else:
-        print(f"Unknown command: {cmd}")
-        print("Available: check, install, serve, ui")
+        print(f"Unknown command: {args.command}")
+        print(f"Available: {', '.join(AVAILABLE_COMMANDS)}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

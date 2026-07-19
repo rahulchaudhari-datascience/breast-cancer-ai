@@ -1,14 +1,19 @@
 # Quick Start Guide
 
-## For Local Inference (After Colab Training)
+## For Local Inference
 
-### 1. Download Models
+This project is already completed and includes a finalized EfficientNet-B0 classifier.
 
-Train models in Google Colab (see `notebooks/COLAB_TRAINING.md`), then:
-- Download `classification_model.pth` and `segmentation_model.pth` from Google Drive
-- Place in `./models/` folder
+Current best validation metrics:
 
-### 2. Setup Environment
+- ROC-AUC: 0.7985
+- Accuracy: 71.43%
+
+## 1. Model Artifacts
+
+The repository stores trained checkpoints under [models](models). The finalized classifier checkpoint is `effnet_best.pth`.
+
+## 2. Setup Environment
 
 ```powershell
 # Create virtual environment
@@ -21,20 +26,15 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-### 3. Verify Setup
+## 3. Verify Setup
 
 ```powershell
 python setup.py check
 ```
 
-Expected output:
-```
-✓ classification_model.pth (XXX MB)
-✓ segmentation_model.pth (XXX MB)
-Setup is complete! Run: streamlit run app.py
-```
+The check command prints the environment summary, dependency availability, and any required model artifacts detected in the `models/` directory.
 
-### 4. Run Streamlit UI
+## 4. Run Streamlit UI
 
 ```powershell
 streamlit run app.py
@@ -46,7 +46,7 @@ streamlit run app.py
 
 ---
 
-## For API Access
+## 5. Run the API
 
 ```powershell
 python setup.py serve
@@ -58,7 +58,7 @@ python setup.py serve
 
 ---
 
-## For Docker Deployment
+## 6. Docker Deployment
 
 ```bash
 docker-compose up --build
@@ -74,9 +74,9 @@ docker-compose up --build
 
 ### Models Not Found
 ```
-✗ classification_model.pth NOT FOUND
+✗ required model artifact NOT FOUND
 ```
-→ Train in Google Colab first, then download to `./models/`
+→ Check the files under `./models/` and confirm the checkpoint names expected by your runtime configuration.
 
 ### Missing Dependencies
 ```
@@ -94,9 +94,8 @@ streamlit: Address already in use
 
 ## Next Steps
 
-1. ✅ Train models in Google Colab
-2. ✅ Download to `./models/`
-3. ✅ Run `streamlit run app.py`
-4. ✅ Upload mammogram → Get predictions + report
+1. ✅ Review the model artifacts in [models](models)
+2. ✅ Run `streamlit run app.py`
+3. ✅ Upload a mammogram image and review predictions, heatmaps, and the PDF report
 
 For more details, see `README.md` and `notebooks/COLAB_TRAINING.md`.

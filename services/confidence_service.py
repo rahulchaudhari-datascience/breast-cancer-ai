@@ -7,23 +7,10 @@ import torch
 
 
 class ConfidenceService:
-    """
-    Confidence and uncertainty estimation service.
+    """Confidence and uncertainty estimation service.
 
-    Used for:
-    - Prediction confidence
-    - Entropy-based uncertainty
-    - Risk reliability level
-
-    Input:
-        probabilities from classifier or BI-RADS model
-
-    Output:
-        {
-            "confidence": 94.2,
-            "uncertainty": 0.18,
-            "reliability": "High"
-        }
+    The service consumes probability vectors or dictionaries and returns a
+    consistent summary with confidence, entropy, uncertainty, and reliability.
     """
 
     def __init__(
@@ -38,6 +25,8 @@ class ConfidenceService:
         self,
         probabilities,
     ) -> Dict:
+
+        """Summarize confidence and uncertainty from a probability vector."""
 
         probs = self._to_numpy(probabilities)
 
@@ -65,6 +54,8 @@ class ConfidenceService:
         eps: float = 1e-8,
     ) -> float:
 
+        """Compute Shannon entropy for a probability vector."""
+
         probs = self._to_numpy(probabilities)
 
         probs = np.clip(
@@ -81,6 +72,8 @@ class ConfidenceService:
         self,
         probabilities,
     ) -> float:
+
+        """Scale entropy to the [0, 1] range based on the number of classes."""
 
         probs = self._to_numpy(probabilities)
 
@@ -100,6 +93,8 @@ class ConfidenceService:
         confidence: float,
     ) -> str:
 
+        """Map a confidence score to a coarse reliability label."""
+
         if confidence >= self.high_threshold:
             return "High"
 
@@ -114,6 +109,8 @@ class ConfidenceService:
         birads_confidence: Optional[float] = None,
         segmentation_quality: Optional[float] = None,
     ) -> Dict:
+
+        """Combine multiple confidence sources into a single summary value."""
 
         values = [classification_confidence]
 
@@ -135,6 +132,8 @@ class ConfidenceService:
         confidence: float,
     ) -> str:
 
+        """Return a short textual warning based on the confidence score."""
+
         if confidence >= 90:
             return "High confidence prediction."
 
@@ -147,6 +146,8 @@ class ConfidenceService:
         self,
         probabilities,
     ) -> np.ndarray:
+
+        """Convert tensors or dictionaries into a NumPy probability array."""
 
         if isinstance(probabilities, torch.Tensor):
             probabilities = probabilities.detach().cpu().numpy()

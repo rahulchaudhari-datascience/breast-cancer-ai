@@ -1,273 +1,241 @@
-# Breast Cancer AI — Research Platform
+# Breast Cancer AI
 
-An explainable AI system for mammogram analysis: segmentation, classification, BI-RADS prediction, and confidence scoring with PDF report generation.
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.x-red.svg)](https://pytorch.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-App-ff4b4b.svg)](https://streamlit.io/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-API-009688.svg)](https://fastapi.tiangolo.com/)
+[![License](https://img.shields.io/badge/License-Research%20Only-lightgrey.svg)](#license)
 
-## Architecture
+## Project Title
 
+Breast Cancer AI is an explainable machine learning system for mammogram analysis. It combines preprocessing, lesion segmentation, binary classification, BI-RADS-style assessment, uncertainty estimation, Grad-CAM visualization, and report generation in a single workflow.
+
+## Project Status
+
+This repository is a completed research prototype with a finalized EfficientNet-B0 classifier.
+
+Current best validation metrics:
+
+- ROC-AUC: 0.7985
+- Accuracy: 71.43%
+
+The surrounding Streamlit app, FastAPI service, preprocessing utilities, and reporting tools are organized to support local inference and presentation.
+
+## Project Overview
+
+This repository provides a research-oriented pipeline for working with mammography images and CBIS-DDSM-style annotations. The project supports local inference through both a Streamlit web interface and a FastAPI API, and it includes training and evaluation scripts for an EfficientNet-B0 classifier.
+
+The system is intended for experimentation, education, and research. It is not intended for clinical diagnosis.
+
+## Key Features
+
+- End-to-end mammogram inference pipeline
+- Tumor region segmentation support
+- Benign vs. malignant classification
+- BI-RADS-inspired confidence scoring
+- Grad-CAM++ explainability visualizations
+- PDF report generation
+- Streamlit UI and FastAPI API
+- Docker-based deployment support
+
+## Pipeline Overview
+
+```mermaid
+flowchart LR
+  A[CBIS-DDSM Metadata] --> B[Dataset Preparation]
+  B --> C[EfficientNet-B0 Training]
+  C --> D[Validation and Reporting]
+  E[Mammogram Image] --> F[Preprocessing]
+  F --> G[Segmentation]
+  G --> H[ROI Extraction]
+  H --> I[Classification]
+  I --> J[BI-RADS and Confidence]
+  I --> K[Grad-CAM++]
+  J --> L[Streamlit UI / FastAPI API / PDF Report]
+  K --> L
 ```
-Google Colab (Training)
-    ↓
-Trained Models (saved to Google Drive)
-    ↓
-Local Download or Docker Volume
-    ↓
-Inference Pipeline (Streamlit UI + FastAPI)
-    ↓
-Results, Reports, Heatmaps
+
+## Dataset (CBIS-DDSM)
+
+The project is designed around CBIS-DDSM-style mammography data and uses CSV annotation files with image paths and labels. The repository includes sample assets under the following folders:
+
+- [datasets/annotations](datasets/annotations)
+- [mock_cbis](mock_cbis)
+- [datasets/raw](datasets/raw)
+- [datasets/processed](datasets/processed)
+
+For full training, the expected data format is a CSV file containing image paths and labels for train/validation splits.
+
+## Model Architecture (EfficientNet-B0)
+
+The classification component is based on EfficientNet-B0, using a pretrained ImageNet backbone and a binary classification head for benign vs. malignant prediction. The classifier has been finalized and is treated as the main completed model for this project.
+
+Key implementation details:
+
+- Backbone: EfficientNet-B0
+- Task: binary classification
+- Optimizer: AdamW
+- Loss: focal loss
+- Training script: [train_efficientnet_b0.py](train_efficientnet_b0.py)
+- Evaluation script: [evaluate_efficientnet_b0.py](evaluate_efficientnet_b0.py)
+
+## Folder Structure
+
+```text
+breast-cancer-ai/
+├── app.py
+├── config.py
+├── requirements.txt
+├── setup.py
+├── Dockerfile
+├── docker-compose.yml
+├── api/
+├── services/
+├── pipelines/
+├── utils/
+├── models/
+├── datasets/
+├── mock_cbis/
+├── notebooks/
+├── outputs/
+├── reports/
+└── tmp_output/
 ```
 
----
+## Installation
 
-## Quick Start
+### Prerequisites
 
-### Option A: Streamlit UI (Local)
+- Python 3.10+
+- pip
+- Optional: NVIDIA GPU for faster training/inference
 
-1. **Setup environment:**
-   ```bash
-   python -m venv .venv
-   .venv\Scripts\Activate.ps1
-   pip install -r requirements.txt
-   ```
+### Setup
 
-2. **Download trained models from Colab or Kaggle:**
-   - See [Training in Google Colab / Kaggle](#training-in-google-colab--kaggle) below
-   - Download `classification_best.pth` and `unetpp_best.pth` to `./models/checkpoints/`
+On Windows PowerShell:
 
-3. **Run Streamlit:**
-   ```bash
-   streamlit run app.py
-   ```
-
-4. **Upload a mammogram image** and see AI predictions, Grad-CAM heatmaps, and PDF report.
-
-### Option B: FastAPI (Local)
-
-```bash
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+```
+
+### Validate the environment
+
+```powershell
+python setup.py check
+```
+
+## Training
+
+Training is implemented in [train_efficientnet_b0.py](train_efficientnet_b0.py).
+
+Example:
+
+```powershell
+python train_efficientnet_b0.py --train-csv datasets/annotations/train.csv --val-csv datasets/annotations/val.csv --batch-size 16 --epochs 15
+```
+
+This will save checkpoints and the best model under [models](models).
+
+## Evaluation
+
+Evaluation is implemented in [evaluate_efficientnet_b0.py](evaluate_efficientnet_b0.py).
+
+Example:
+
+```powershell
+python evaluate_efficientnet_b0.py --checkpoint models/effnet_best.pth --val-csv datasets/annotations/val.csv
+```
+
+The repository currently includes an evaluation report at [reports/evaluation_report.txt](reports/evaluation_report.txt).
+
+## Inference
+
+### Streamlit UI
+
+```powershell
+streamlit run app.py
+```
+
+Open the local URL shown by Streamlit and upload a mammogram image to run the analysis.
+
+### API Server
+
+```powershell
+python setup.py serve
+```
+
+Or directly:
+
+```powershell
 uvicorn api.main:app --host 127.0.0.1 --port 8000
 ```
 
-**Test the API:**
+## API Usage
+
+Health check:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+Prediction request:
+
 ```bash
 curl -X POST http://127.0.0.1:8000/predict \
   -F "file=@mammogram.png" \
   -F "patient_id=Demo Patient" \
-  -F "generate_report=false"
-```
-
-### Option C: Docker (Recommended for Production)
-
-```bash
-# Build and run both Streamlit UI and FastAPI with docker-compose
-docker-compose up --build
-
-# UI runs on http://localhost:8501
-# API runs on http://localhost:8000
-# Health check: curl http://localhost:8000/health
-```
-
----
-
-## Training in Google Colab / Kaggle
-
-1. **Open the training notebook:**
-   - See `notebooks/colab_training.ipynb` (template included in this repo)
-   - Or download it and open in [Google Colab](https://colab.research.google.com)
-
-2. **Steps in Colab:**
-   ```
-   - Upload your dataset (mammograms + masks + labels CSV)
-   - Install dependencies (pytorch, timm, albumentations, etc.)
-   - Train U-Net++ segmentation model
-   - Train EfficientNet-B0 classification model
-   - Save trained checkpoints to Google Drive or Kaggle output
-   ```
-
-3. **Download models locally:**
-   - Download `classification_best.pth` and `unetpp_best.pth` from Google Drive / Kaggle output
-   - Place in `./models/checkpoints/` folder
-
-4. **Run inference locally** (see Quick Start above)
-
----
-
-## Project Structure
-
-```
-breast-cancer-ai/
-├── app.py                      # Streamlit UI
-├── config.py                   # Configuration (device, paths, etc.)
-├── requirements.txt            # Dependencies
-├── Dockerfile                  # Container image
-├── docker-compose.yml          # Multi-container orchestration
-│
-├── api/
-│   ├── main.py                # FastAPI server
-│   ├── client_example.py       # Example HTTP client
-│   └── tests/
-│       └── test_api_health.py # Health check test
-│
-├── services/                   # Business logic
-│   ├── model_builder.py       # Local model construction (no pretrained)
-│   ├── model_downloader.py    # Download models from Colab
-│   ├── preprocessing_service.py
-│   ├── segmentation_service.py
-│   ├── roi_service.py
-│   ├── classification_service.py
-│   ├── birads_service.py
-│   ├── confidence_service.py
-│   ├── explainability_service.py  # Grad-CAM++
-│   └── report_service.py       # PDF generation
-│
-├── pipelines/
-│   ├── inference_pipeline.py   # End-to-end inference
-│   ├── training_pipeline.py    # Local training (optional)
-│   └── evaluation_pipeline.py  # Metrics computation
-│
-├── utils/
-│   ├── image_utils.py
-│   ├── data_utils.py
-│   ├── metrics_utils.py
-│   └── visualization_utils.py
-│
-├── models/                     # Trained model storage
-│   ├── classification_model.pth  # Download from Colab
-│   └── segmentation_model.pth    # Download from Colab
-│
-├── datasets/
-│   ├── raw/
-│   ├── processed/
-│   ├── masks/
-│   └── annotations/
-│
-├── reports/                    # Generated PDF reports
-│
-└── notebooks/
-    └── colab_training.ipynb    # Template for Google Colab training
-```
-
----
-
-## Models
-
-### Architecture
-
-- **Segmentation:** U-Net++
-- **Classification:** EfficientNet-B0 (pretrained backbone, Kaggle-friendly)
-- **Explainability:** Grad-CAM++
-- **Confidence:** Uncertainty estimation + multi-source confidence fusion
-
-### Training (Google Colab)
-
-Models are **trained in Google Colab** with:
-- GPU acceleration
-- Tensorboard monitoring
-- Checkpoints saved to Google Drive
-- Batch size: 8 (RTX 3050 6GB optimization)
-- Image size: 512×512
-- Epochs: 50–100
-
-### Local Inference
-
-Downloaded models are loaded in `inference_pipeline.py` without requiring internet or pretrained weight downloads.
-
----
-
-## API Endpoints
-
-### GET `/health`
-Health check.
-```
-curl http://127.0.0.1:8000/health
-→ {"status": "ok"}
-```
-
-### POST `/predict`
-Run full AI pipeline on an image.
-
-**Request:**
-```bash
-curl -X POST http://127.0.0.1:8000/predict \
-  -F "file=@test.png" \
-  -F "patient_id=Patient001" \
   -F "generate_report=true"
 ```
 
-**Response:**
-```json
-{
-  "status": "success",
-  "prediction": "Malignant",
-  "class_id": 1,
-  "probability": 0.92,
-  "confidence": 92.1,
-  "birads": "BI-RADS 5",
-  "birads_confidence": 88.5,
-  "roi_status": "success",
-  "report_path": "/app/reports/breast_cancer_report_20260625_120000.pdf"
-}
-```
+## Grad-CAM Visualization
 
----
+The project includes explainability support through Grad-CAM++. Heatmaps are generated during inference and can be viewed in the Streamlit interface or saved to the output directories such as [outputs/heatmaps](outputs/heatmaps).
 
-## Configuration
+## Results
 
-Edit `config.py` to customize:
-- `DEVICE` — "cpu" or "cuda"
-- `IMAGE_SIZE` — 512 (default)
-- `BATCH_SIZE` — 8 (training)
-- Model checkpoint paths
-- Output directories
+The finalized validation snapshot for the EfficientNet-B0 classifier is:
 
----
+- Accuracy: 71.43%
+- ROC-AUC: 0.7985
 
-## Hardware Requirements
+The project remains a research prototype rather than a clinical decision system. Outputs are intended for education, experimentation, and demonstration.
 
-- **Minimum:** CPU-only (inference works on 2GB RAM)
-- **Recommended:** NVIDIA GPU with 6GB VRAM (RTX 3050+) for faster inference
-- **Docker:** Any CPU (inference) or GPU passthrough
+## Technologies Used
 
----
+- Python
+- PyTorch
+- TorchVision
+- timm
+- OpenCV
+- Pillow
+- scikit-learn
+- FastAPI
+- Streamlit
+- ReportLab
+- TensorBoard
 
-## Features
+## Future Improvements
 
-✅ Tumor Segmentation (U-Net++)  
-✅ Malignant/Benign Classification (ConvNeXt)  
-✅ BI-RADS Assessment  
-✅ Confidence & Uncertainty Scoring  
-✅ Grad-CAM++ Explainability  
-✅ PDF Report Generation  
-✅ Streamlit UI  
-✅ FastAPI REST Server  
-✅ Docker Deployment  
+- Expand dataset support and improve validation coverage
+- Add more robust training pipelines and experiment tracking
+- Improve model calibration and uncertainty estimation
+- Add additional evaluation metrics and clinical-focused benchmarking
+- Strengthen deployment and test coverage
 
----
+## Practical Notes
 
-## Workflow Example
-
-```bash
-# 1. Train in Google Colab (see colab_training.ipynb)
-# 2. Download models to ./models/
-# 3. Run locally:
-
-streamlit run app.py
-# Upload mammogram → See predictions, heatmap, and PDF report
-
-# Or via API:
-curl -X POST http://127.0.0.1:8000/predict \
-  -F "file=@mammogram.png" \
-  -F "patient_id=Case123" \
-  -F "generate_report=true"
-```
-
----
-
-## Disclaimer
-
-This is a **research and educational prototype**. It is **not approved for clinical use**. Results must be reviewed by qualified radiologists and medical professionals before any clinical decision-making.
-
----
+- Streamlit is the most complete end-user experience in the repository.
+- The FastAPI service is useful for automation and integration tests.
+- Generated reports, heatmaps, and outputs are written to the folders under [outputs](outputs) and [reports](reports).
 
 ## License
 
-Educational use only. See LICENSE file for details.
+This repository does not currently include a dedicated license file. For now, it is intended for research and educational use only. A formal license should be added before broader redistribution or commercial use.
+
+## Acknowledgements
+
+- CBIS-DDSM dataset and related mammography research community
+- PyTorch and the wider open-source machine learning ecosystem
+- The contributors and maintainers of the libraries used in this project

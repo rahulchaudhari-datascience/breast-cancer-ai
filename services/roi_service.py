@@ -9,15 +9,10 @@ from config import IMAGE_SIZE
 
 
 class ROIService:
-    """
-    ROI Extraction Service for mammogram lesion regions.
+    """ROI extraction service for mammogram lesion regions.
 
-    Input:
-        image: RGB image as numpy array
-        mask : binary tumor mask as numpy array
-
-    Output:
-        ROI crop, bounding box, overlay, and metadata
+    The service accepts an RGB image and a binary mask and returns a cropped
+    ROI, bounding box metadata, and a visual overlay for downstream services.
     """
 
     def __init__(
@@ -35,6 +30,7 @@ class ROIService:
         image: np.ndarray,
         mask: np.ndarray
     ) -> Dict:
+        """Extract the best ROI and its metadata from an image/mask pair."""
         image = self._ensure_rgb(image)
         mask = self._prepare_mask(mask)
 
@@ -91,6 +87,8 @@ class ROIService:
         mask: np.ndarray
     ) -> Optional[Tuple[int, int, int, int]]:
 
+        """Return the largest contour bounding box that satisfies the area threshold."""
+
         contours, _ = cv2.findContours(
             mask,
             cv2.RETR_EXTERNAL,
@@ -118,6 +116,8 @@ class ROIService:
         image_shape
     ) -> Tuple[int, int, int, int]:
 
+        """Expand a bounding box while clamping it to the image bounds."""
+
         x, y, w, h = bbox
         img_h, img_w = image_shape[:2]
 
@@ -143,6 +143,8 @@ class ROIService:
         bbox: Tuple[int, int, int, int]
     ) -> np.ndarray:
 
+        """Draw a bounding box overlay on the provided image."""
+
         x, y, w, h = bbox
 
         cv2.rectangle(
@@ -159,6 +161,8 @@ class ROIService:
         self,
         mask: np.ndarray
     ) -> np.ndarray:
+
+        """Normalize a mask to the binary format expected by ROI extraction."""
 
         if mask.ndim == 3:
             mask = cv2.cvtColor(
@@ -184,6 +188,8 @@ class ROIService:
         self,
         image: np.ndarray
     ) -> np.ndarray:
+
+        """Normalize grayscale or RGBA inputs to RGB."""
 
         if image.ndim == 2:
             return cv2.cvtColor(

@@ -1,25 +1,14 @@
-# Trained Models Storage
+# Trained Models
 
-Place your trained models from Google Colab here:
+This directory stores the final model artifacts for the project.
 
-- `classification_model.pth` — ConvNeXt-Tiny classification model (trained in Colab)
-- `segmentation_model.pth` — U-Net++ segmentation model (trained in Colab)
+## Current Contents
 
-## How to Get Models
+- `effnet_best.pth` - finalized EfficientNet-B0 classifier checkpoint
+- `effnet_b0_epoch_1.pth` - earlier training checkpoint kept for reference
 
-1. **Train in Google Colab:**
-   - See `../notebooks/COLAB_TRAINING.md`
-   - Run the training notebook in Colab
-   - Models will be saved to your Google Drive
+## Notes
 
-2. **Download to Local:**
-   - Access Google Drive: `breast-cancer-ai/models/`
-   - Download both `.pth` files
-   - Place them in this folder (`./models/`)
-
-3. **Verify:**
-   ```bash
-   python setup.py check
-   ```
-
-Once models are in place, inference will work locally without internet access.
+- Keep model files small and clearly named so the runtime configuration stays easy to understand.
+- If you add new checkpoints, document the intended use in this file.
+- The repository uses this folder as the canonical home for model artifacts and related reference files.

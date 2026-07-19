@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # FastAPI application for programmatic inference.
   api:
     build: .
     container_name: breast-cancer-ai-api
@@ -10,11 +11,12 @@ services:
       - PYTHONUNBUFFERED=1
       - DEVICE=cpu  # Change to cuda if GPU available
     volumes:
-      - ./models:/app/models          # Mount trained models from Colab
-      - ./reports:/app/reports        # Mount generated reports
-      - ./datasets:/app/datasets      # Optional: mount datasets
+      - ./models:/app/models  # Mount trained models from Colab
+      - ./reports:/app/reports  # Mount generated reports
+      - ./datasets:/app/datasets  # Optional: mount datasets
     restart: unless-stopped
-    
+
+  # Streamlit application for interactive inference.
   streamlit:
     build: .
     container_name: breast-cancer-ai-ui

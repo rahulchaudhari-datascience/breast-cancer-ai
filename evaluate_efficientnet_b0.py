@@ -1,8 +1,16 @@
+"""Evaluate an EfficientNet-B0 classifier and write the same reports and plots.
+
+The script preserves the exact evaluation logic, predictions, metrics, and output
+file names while improving organization, comments, logging, and readability.
+"""
+
 import argparse
+import logging
 from pathlib import Path
 
 import cv2
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,15 +18,28 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from PIL import Image, UnidentifiedImageError
-from sklearn.metrics import (accuracy_score, auc, classification_report, confusion_matrix,
-                             f1_score, precision_score, recall_score, roc_auc_score, roc_curve)
+from sklearn.metrics import (
+    accuracy_score,
+    auc,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_curve,
+)
 from torch.utils.data import DataLoader, Dataset
 from torchvision import models, transforms
 
 ROOT_DIR = Path(__file__).resolve().parent
 
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+LOGGER = logging.getLogger(__name__)
+
 
 class CBISDataset(Dataset):
+    """Dataset wrapper for evaluation images and labels from a CSV manifest."""
+
     def __init__(self, csv_file: str, transform=None):
         self.data = pd.read_csv(csv_file)
         self.transform = transform
@@ -34,13 +55,7 @@ class CBISDataset(Dataset):
     def __getitem__(self, idx):
         row = self.data.iloc[idx]
         image_path = row["image_path"]
-        label = row["label"]
-
-        if isinstance(label, str):
-            normalized = label.strip().upper()
-            label = self.label_map.get(normalized, int(normalized))
-        else:
-            label = int(label)
+        label = self._normalize_label(row["label"])
 
         try:
             with Image.open(image_path) as image:
@@ -53,8 +68,15 @@ class CBISDataset(Dataset):
 
         return image, torch.tensor(label, dtype=torch.long), image_path
 
+    def _normalize_label(self, label):
+        if isinstance(label, str):
+            normalized = label.strip().upper()
+            return self.label_map.get(normalized, int(normalized))
+        return int(label)
+
 
 def get_transforms():
+    """Return the evaluation image transformations used by the script."""
     normalize = transforms.Normalize(
         mean=[0.485, 0.456, 0.406],
         std=[0.229, 0.224, 0.225],
@@ -68,6 +90,7 @@ def get_transforms():
 
 
 def build_loader(csv_file: str, batch_size: int = 16, num_workers: int = 4):
+    """Create a DataLoader for evaluation data without changing the evaluation behavior."""
     val_tfms = get_transforms()
     dataset = CBISDataset(csv_file, transform=val_tfms)
     loader = DataLoader(
@@ -81,6 +104,7 @@ def build_loader(csv_file: str, batch_size: int = 16, num_workers: int = 4):
 
 
 def build_model(checkpoint_path: str, device: torch.device) -> nn.Module:
+    """Load the EfficientNet-B0 checkpoint and place it on the requested device."""
     model = models.efficientnet_b0(pretrained=False)
     model.classifier[1] = nn.Linear(model.classifier[1].in_features, 2)
     model = model.to(device)
@@ -99,6 +123,7 @@ def build_model(checkpoint_path: str, device: torch.device) -> nn.Module:
 
 
 def evaluate_confusion_matrix(model, loader, device, output_dir: Path):
+    """Run inference, save the confusion matrix figure, and return evaluation arrays."""
     y_true = []
     y_pred = []
     y_score = []
@@ -137,12 +162,13 @@ def evaluate_confusion_matrix(model, loader, device, output_dir: Path):
     fig.savefig(confusion_path, bbox_inches="tight")
     plt.close(fig)
 
-    print("Confusion Matrix:\n", report)
-    print(f"Saved confusion matrix to: {confusion_path}")
+    LOGGER.info("Confusion Matrix:\n%s", report)
+    LOGGER.info("Saved confusion matrix to: %s", confusion_path)
     return y_true, y_pred, y_score, image_paths
 
 
 def plot_roc_curve(y_true, y_score, output_dir: Path):
+    """Save the ROC curve figure and return the computed ROC-AUC value."""
     fpr, tpr, _ = roc_curve(y_true, y_score)
     roc_auc = auc(fpr, tpr)
 
@@ -158,11 +184,12 @@ def plot_roc_curve(y_true, y_score, output_dir: Path):
     fig.savefig(roc_path, bbox_inches="tight")
     plt.close(fig)
 
-    print(f"Saved ROC curve to: {roc_path}")
+    LOGGER.info("Saved ROC curve to: %s", roc_path)
     return roc_auc
 
 
 def save_prediction_outputs(image_paths, y_true, y_pred, y_score, output_dir: Path):
+    """Write prediction, false-positive, and false-negative CSV outputs."""
     predictions_df = pd.DataFrame({
         "image_path": image_paths,
         "true_label": y_true,
@@ -181,13 +208,15 @@ def save_prediction_outputs(image_paths, y_true, y_pred, y_score, output_dir: Pa
     false_positives_df.to_csv(false_positives_path, index=False)
     false_negatives_df.to_csv(false_negatives_path, index=False)
 
-    print(f"Saved predictions to: {predictions_path}")
-    print(f"Saved false positives to: {false_positives_path}")
-    print(f"Saved false negatives to: {false_negatives_path}")
+    LOGGER.info("Saved predictions to: %s", predictions_path)
+    LOGGER.info("Saved false positives to: %s", false_positives_path)
+    LOGGER.info("Saved false negatives to: %s", false_negatives_path)
     return predictions_df, false_positives_df, false_negatives_df
 
 
 def _register_hooks(target_layer, features, gradients):
+    """Register forward and backward hooks for Grad-CAM feature capture."""
+
     def forward_hook(module, input, output):
         features.append(output)
 
@@ -204,6 +233,7 @@ def _register_hooks(target_layer, features, gradients):
 
 
 def generate_gradcam(model, image_tensor, device):
+    """Generate a Grad-CAM heatmap using the existing model architecture."""
     model.eval()
     features = []
     gradients = []
@@ -239,6 +269,7 @@ def generate_gradcam(model, image_tensor, device):
 
 
 def save_gradcam(heatmap, image_path: Path, output_path: Path):
+    """Save a Grad-CAM overlay image to disk."""
     image = cv2.imread(str(image_path))
     if image is None:
         raise FileNotFoundError(f"Cannot read image for Grad-CAM overlay: {image_path}")
@@ -260,7 +291,26 @@ def save_gradcam(heatmap, image_path: Path, output_path: Path):
     plt.close()
 
 
+def write_evaluation_report(output_dir: Path, accuracy: float, roc_auc: float, precision: float,
+                            recall: float, f1: float, y_true, y_pred) -> Path:
+    """Write the evaluation report text file using the same content structure."""
+    metrics_path = output_dir / "evaluation_report.txt"
+    metrics_path.write_text(
+        f"Validation Accuracy: {accuracy:.4f}\n"
+        f"ROC-AUC: {roc_auc:.4f}\n"
+        f"Precision: {precision:.4f}\n"
+        f"Recall: {recall:.4f}\n"
+        f"F1-score: {f1:.4f}\n"
+        f"Confusion matrix: {output_dir / 'confusion_matrix.png'}\n"
+        f"ROC curve: {output_dir / 'roc_curve.png'}\n"
+        f"Classification report:\n{classification_report(y_true, y_pred, target_names=['Benign', 'Malignant'], digits=4)}\n",
+        encoding="utf-8",
+    )
+    return metrics_path
+
+
 def main():
+    """Run evaluation, save outputs, and write the report file."""
     parser = argparse.ArgumentParser(description="Evaluate EfficientNet-B0 medical model with ROC, confusion matrix, and Grad-CAM.")
     parser.add_argument("--checkpoint", type=str, default=str(ROOT_DIR / "models" / "effnet_best.pth"), help="Path to trained EfficientNet-B0 checkpoint.")
     parser.add_argument("--val-csv", type=str, default=str(ROOT_DIR / "datasets" / "annotations" / "val.csv"))
@@ -285,24 +335,24 @@ def main():
     recall = recall_score(y_true, y_pred, zero_division=0)
     f1 = f1_score(y_true, y_pred, zero_division=0)
 
-    print(f"Validation Accuracy: {accuracy:.4f}")
-    print(f"ROC-AUC: {roc_auc:.4f}")
-    print(f"Precision: {precision:.4f}")
-    print(f"Recall: {recall:.4f}")
-    print(f"F1-score: {f1:.4f}")
-    print("Classification Report:\n", classification_report(y_true, y_pred, target_names=["Benign", "Malignant"], digits=4))
+    LOGGER.info("Validation Accuracy: %.4f", accuracy)
+    LOGGER.info("ROC-AUC: %.4f", roc_auc)
+    LOGGER.info("Precision: %.4f", precision)
+    LOGGER.info("Recall: %.4f", recall)
+    LOGGER.info("F1-score: %.4f", f1)
+    LOGGER.info("Classification Report:\n%s", classification_report(y_true, y_pred, target_names=["Benign", "Malignant"], digits=4))
 
     cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
     tn, fp, fn, tp = cm.ravel()
-    print(f"True Positives: {tp}")
-    print(f"True Negatives: {tn}")
-    print(f"False Positives: {fp}")
-    print(f"False Negatives: {fn}")
+    LOGGER.info("True Positives: %s", tp)
+    LOGGER.info("True Negatives: %s", tn)
+    LOGGER.info("False Positives: %s", fp)
+    LOGGER.info("False Negatives: %s", fn)
 
     save_prediction_outputs(image_paths, y_true, y_pred, y_score, output_dir)
 
     if args.gradcam_samples > 0:
-        print(f"Generating Grad-CAM for {args.gradcam_samples} validation samples...")
+        LOGGER.info("Generating Grad-CAM for %s validation samples...", args.gradcam_samples)
         count = 0
         for images, labels, paths in loader:
             for idx in range(images.size(0)):
@@ -312,26 +362,15 @@ def main():
                     heatmap, pred_class = generate_gradcam(model, images[idx], device)
                     output_path = output_dir / f"gradcam_{count+1}_{Path(paths[idx]).stem}.png"
                     save_gradcam(heatmap, Path(paths[idx]), output_path)
-                    print(f"Saved Grad-CAM {count+1} -> {output_path}")
+                    LOGGER.info("Saved Grad-CAM %s -> %s", count + 1, output_path)
                 except Exception as exc:
-                    print(f"Grad-CAM failed for {paths[idx]}: {exc}")
+                    LOGGER.info("Grad-CAM failed for %s: %s", paths[idx], exc)
                 count += 1
             if count >= args.gradcam_samples:
                 break
 
-    metrics_path = output_dir / "evaluation_report.txt"
-    metrics_path.write_text(
-        f"Validation Accuracy: {accuracy:.4f}\n"
-        f"ROC-AUC: {roc_auc:.4f}\n"
-        f"Precision: {precision:.4f}\n"
-        f"Recall: {recall:.4f}\n"
-        f"F1-score: {f1:.4f}\n"
-        f"Confusion matrix: {output_dir / 'confusion_matrix.png'}\n"
-        f"ROC curve: {output_dir / 'roc_curve.png'}\n"
-        f"Classification report:\n{classification_report(y_true, y_pred, target_names=['Benign', 'Malignant'], digits=4)}\n",
-        encoding="utf-8",
-    )
-    print(f"Saved evaluation report to: {metrics_path}")
+    metrics_path = write_evaluation_report(output_dir, accuracy, roc_auc, precision, recall, f1, y_true, y_pred)
+    LOGGER.info("Saved evaluation report to: %s", metrics_path)
 
 
 if __name__ == "__main__":

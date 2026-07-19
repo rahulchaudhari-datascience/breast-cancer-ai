@@ -8,6 +8,7 @@ import numpy as np
 import torch
 
 from services.model_builder import build_segmentation_model
+from services._shared import get_service_logger, load_state_dict_into_model
 
 from config import (
     DEVICE,
@@ -45,6 +46,7 @@ class SegmentationService:
         classes: int = 1,
     ):
 
+        self.logger = get_service_logger(self.__class__.__name__)
         self.device = DEVICE
         self.checkpoint_path = (
             checkpoint_path
@@ -63,6 +65,7 @@ class SegmentationService:
     # =====================================================
 
     def _build_model(self) -> torch.nn.Module:
+        """Build the segmentation backbone with the configured encoder settings."""
         return build_segmentation_model(
             encoder_name=self.encoder_name,
             in_channels=self.in_channels,
@@ -78,24 +81,19 @@ class SegmentationService:
 
         if Path(self.checkpoint_path).exists():
             try:
-                checkpoint = torch.load(
+                load_state_dict_into_model(
+                    self.model,
                     self.checkpoint_path,
                     map_location=self.device,
                 )
-
-                if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
-                    self.model.load_state_dict(checkpoint["model_state_dict"])
-                else:
-                    self.model.load_state_dict(checkpoint)
-
-                print(f"[INFO] Loaded segmentation checkpoint: {self.checkpoint_path}")
+                self.logger.info("Loaded segmentation checkpoint: %s", self.checkpoint_path)
             except Exception as exc:
-                print(
-                    f"[WARNING] Failed to load segmentation checkpoint: {exc}. "
-                    "Using untrained U-Net++ model."
+                self.logger.warning(
+                    "Failed to load segmentation checkpoint: %s. Using untrained U-Net++ model.",
+                    exc,
                 )
         else:
-            print("[INFO] Segmentation checkpoint not found. Using untrained U-Net++ model.")
+            self.logger.info("Segmentation checkpoint not found. Using untrained U-Net++ model.")
 
         self.model.to(self.device)
         self.model.eval()
@@ -137,7 +135,7 @@ class SegmentationService:
         try:
             logits = self.model(image_tensor)
         except Exception as exc:
-            print(f"[WARNING] Segmentation model inference failed: {exc}. Falling back to Otsu.")
+            self.logger.warning("Segmentation model inference failed: %s. Falling back to Otsu.", exc)
             return self.fallback_mask(image_tensor)
 
         probs = torch.sigmoid(logits)
@@ -293,9 +291,4 @@ class SegmentationService:
 
         return overlay
 
-    def _save_mask(self, mask: np.ndarray, filename: Optional[str] = None) -> Path:
-        save_path = MASK_OUTPUT_DIR / (filename or "segmentation_mask.png")
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        cv2.imwrite(str(save_path), mask)
-        return save_path
 

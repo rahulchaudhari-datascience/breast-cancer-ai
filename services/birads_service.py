@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from services.model_builder import build_classification_model
+from services._shared import get_service_logger, load_state_dict_into_model
 from services.preprocessing_service import PreprocessingService
 
 from config import (
@@ -35,6 +36,7 @@ class BIRADSService:
         checkpoint_path: Optional[str] = None,
         model_name: str = "convnextv2_tiny.fcmae_ft_in22k_in1k",
     ):
+        self.logger = get_service_logger(self.__class__.__name__)
         self.device = DEVICE
         self.model_name = model_name
         self.checkpoint_path = (
@@ -49,6 +51,7 @@ class BIRADSService:
         self.model.eval()
 
     def _build_model(self) -> nn.Module:
+        """Build the BI-RADS classifier using the configured backbone."""
         return build_classification_model(
             model_name=self.model_name,
             num_classes=BIRADS_CLASSES,
@@ -59,25 +62,23 @@ class BIRADSService:
         path = Path(self.checkpoint_path)
 
         if not path.exists():
-            print("[INFO] BI-RADS checkpoint not found. Using untrained ConvNeXt model.")
+            self.logger.info("BI-RADS checkpoint not found. Using untrained ConvNeXt model.")
             return
 
         try:
-            checkpoint = torch.load(path, map_location=self.device)
-
-            if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
-                self.model.load_state_dict(checkpoint["model_state_dict"])
-            else:
-                self.model.load_state_dict(checkpoint)
-
-            print(f"[INFO] Loaded BI-RADS checkpoint: {path}")
+            load_state_dict_into_model(self.model, path, map_location=self.device)
+            self.logger.info("Loaded BI-RADS checkpoint: %s", path)
         except Exception as exc:
-            print(f"[WARNING] Failed to load BI-RADS checkpoint: {exc}. Using model weights as initialized.")
+            self.logger.warning(
+                "Failed to load BI-RADS checkpoint: %s. Using model weights as initialized.",
+                exc,
+            )
 
     def preprocess_roi(
         self,
         roi: np.ndarray,
     ) -> torch.Tensor:
+        """Apply the shared preprocessing pipeline to an ROI crop."""
         return self.preprocessing.preprocess_for_model(roi)
 
     @torch.no_grad()

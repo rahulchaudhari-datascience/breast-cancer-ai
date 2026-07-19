@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Dict, Optional
-import logging
 
 import numpy as np
 import torch
 import torch.nn as nn
 from services.model_builder import build_classification_model
+from services._shared import get_service_logger, load_state_dict_into_model
 from services.preprocessing_service import PreprocessingService
 
 from config import (
@@ -21,11 +21,11 @@ from config import (
     CLASSIFICATION_MODEL_NAME,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_service_logger(__name__)
 
 
 class ClassificationService:
-    """EfficientNet-B0 based classifier wrapper.
+    """EfficientNet-B0-based classifier wrapper.
 
     Provides single-image and batch prediction utilities returning softmax
     probabilities and a human-readable label.
@@ -47,7 +47,7 @@ class ClassificationService:
         self.model.eval()
 
     def _build_model(self) -> nn.Module:
-        # Use config.PRETRAINED by default; allow override in build call
+        """Build the classifier using the configured backbone and class count."""
         return build_classification_model(
             model_name=self.model_name,
             num_classes=NUM_CLASSES,
@@ -58,11 +58,13 @@ class ClassificationService:
         path = Path(self.checkpoint_path)
 
         if not path.exists():
-            logger.warning("Classification checkpoint not found at %s. Using model initialization (pretrained=%s).",
-                           path, PRETRAINED)
-            # If the model was created without ImageNet weights and a checkpoint
-            # is missing, attempt to fall back to ImageNet weights for better
-            # out-of-the-box performance.
+            logger.warning(
+                "Classification checkpoint not found at %s. Using model initialization (pretrained=%s).",
+                path,
+                PRETRAINED,
+            )
+            # Preserve the existing fallback behavior for environments that
+            # rely on ImageNet-initialized weights when no fine-tuned checkpoint is available.
             if not PRETRAINED:
                 try:
                     logger.info("Rebuilding model with ImageNet pretrained weights as fallback.")
@@ -76,24 +78,20 @@ class ClassificationService:
             return
 
         try:
-            checkpoint = torch.load(path, map_location=self.device)
-
-            if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
-                state = checkpoint["model_state_dict"]
-            elif isinstance(checkpoint, dict) and "state_dict" in checkpoint:
-                state = checkpoint["state_dict"]
-            else:
-                state = checkpoint
-
-            self.model.load_state_dict(state)
+            load_state_dict_into_model(self.model, path, map_location=self.device)
             logger.info("Loaded classification checkpoint: %s", path)
         except Exception as exc:
-            logger.exception("Failed to load classification checkpoint '%s': %s. Using initialized weights.", path, exc)
+            logger.exception(
+                "Failed to load classification checkpoint '%s': %s. Using initialized weights.",
+                path,
+                exc,
+            )
 
     def preprocess_roi(
         self,
         roi: np.ndarray,
     ) -> torch.Tensor:
+        """Apply the shared preprocessing pipeline to an ROI crop."""
         return self.preprocessing.preprocess_for_model(roi)
 
     @torch.no_grad()
@@ -134,12 +132,7 @@ class ClassificationService:
         self,
         rois: list[np.ndarray],
     ) -> list[Dict]:
-
-        results = []
-
-        for roi in rois:
-            results.append(self.predict(roi))
-
-        return results
+        """Run prediction on a batch of ROI crops while preserving the single-item contract."""
+        return [self.predict(roi) for roi in rois]
 
 

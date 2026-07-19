@@ -1,3 +1,10 @@
+"""Prepare CBIS-DDSM annotation CSVs from metadata and indexed image paths.
+
+The script builds lookup tables once, resolves rows through cached lookups,
+and emits train/validation CSV files in the standard ``image_path,label``
+format.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -19,19 +26,38 @@ TEST_CSV_FILENAMES = [
     "mass_case_description_test_set.csv",
     "calc_case_description_test_set.csv",
 ]
+PREFERRED_IMAGE_COLUMNS = [
+    "image file path",
+    "cropped image file path",
+    "roi mask file path",
+    "cropped image file",
+    "roi_mask_file_path",
+]
+PREFERRED_LABEL_COLUMNS = [
+    "pathology",
+    "pathology_status",
+    "pathology description",
+    "pathology_type",
+    "biopsy result",
+    "biopsy_result",
+    "assessment",
+    "assessment code",
+]
 
 
 def configure_logging(log_path: Path) -> None:
-    """Configure logging to stdout and file."""
+    """Configure INFO-level logging for stdout and the preparation log file."""
     log_path.parent.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
         handlers=[logging.StreamHandler(), logging.FileHandler(str(log_path), encoding="utf-8")],
+        force=True,
     )
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for dataset preparation."""
     parser = argparse.ArgumentParser(description="Prepare CBIS-DDSM dataset annotations.")
 
     parser.add_argument(
@@ -67,33 +93,35 @@ def parse_args() -> argparse.Namespace:
 
 
 def normalize_text(value: Optional[str]) -> str:
+    """Normalize whitespace and casing for metadata text comparisons."""
     if value is None:
         return ""
     return re.sub(r"\s+", " ", str(value).strip().lower())
 
 
 def infer_label_from_text(value: Optional[str]) -> Optional[int]:
-    """Map pathology/assessment text to labels.
+    """Map pathology or assessment text to a binary label.
 
-    Returns 1 for malignant, 0 for benign/benign_without_callback, and None if unknown/ignored.
+    Returns 1 for malignant, 0 for benign or benign_without_callback, and None if unknown.
     """
     if value is None:
         return None
-    v = normalize_text(value)
-    if "malignant" in v:
+
+    normalized_value = normalize_text(value)
+    if "malignant" in normalized_value:
         return 1
-    if "benign_without_callback" in v or "benign without callback" in v:
+    if "benign_without_callback" in normalized_value or "benign without callback" in normalized_value:
         return 0
-    if "benign" in v:
+    if "benign" in normalized_value:
         return 0
     return None
 
 
 class CBISDDMSplitter:
-    """Efficiently prepare CBIS-DDSM train/val CSVs using O(N) image indexing.
+    """Prepare CBIS-DDSM train/val CSVs using one-time image indexing.
 
-    The implementation indexes JPEG images once into hash maps and uses direct
-    lookups (no nested scanning) when resolving image references from CSV metadata.
+    The splitter builds lookup tables once and then resolves metadata rows
+    through direct dictionary access instead of repeated filesystem scanning.
     """
 
     def __init__(self, dataset_root: Path, output_dir: Path, val_size: float = 0.15):
@@ -107,7 +135,7 @@ class CBISDDMSplitter:
         self.logger = logging.getLogger(self.__class__.__name__)
 
         self._ensure_roots()
-        # Build image indices once (O(N_images))
+        # Build the image lookup tables once.
         self.name_map, self.rel_map, self.uid_map, self.stem_map = self._index_images()
         self._uid_cache = {}
         for uid, files in self.uid_map.items():
@@ -116,7 +144,7 @@ class CBISDDMSplitter:
                     sorted_files = sorted(file_list, key=lambda p: p.as_posix())
                     self._uid_cache[uid] = sorted_files[0]
                     break
-        # debug flag (can be set from CLI)
+        # CLI-controlled diagnostic mode.
         self.debug = False
 
     def _ensure_roots(self) -> None:
@@ -129,8 +157,8 @@ class CBISDDMSplitter:
         """Index all JPEG images under `jpeg_root`.
 
         Returns:
-            name_map: mapping from filename (lowercase) -> list of absolute Paths
-            rel_map: mapping from relative path under jpeg_root (posix, lowercase) -> Path
+            name_map: filename (lowercase) -> list of absolute Paths
+            rel_map: relative path under jpeg_root (posix, lowercase) -> Path
         """
         name_map: Dict[str, List[Path]] = {}
         rel_map: Dict[str, Path] = {}
@@ -170,51 +198,52 @@ class CBISDDMSplitter:
         return name_map, rel_map, uid_map, stem_map
 
     def _read_csv_files(self, filenames: List[str]) -> pd.DataFrame:
+        """Load and concatenate metadata CSV files when available."""
         rows: List[pd.DataFrame] = []
-        for fn in filenames:
-            p = self.csv_root / fn
-            if not p.exists():
-                self.logger.warning("Missing metadata file, skipping: %s", p)
+        for filename in filenames:
+            csv_path = self.csv_root / filename
+            if not csv_path.exists():
+                self.logger.warning("Missing metadata file, skipping: %s", csv_path)
                 continue
             try:
-                df = pd.read_csv(p, low_memory=False)
-                rows.append(df)
-                self.logger.info("Loaded %s (%d rows)", p.name, len(df))
+                dataframe = pd.read_csv(csv_path, low_memory=False)
+                rows.append(dataframe)
+                self.logger.info("Loaded %s (%d rows)", csv_path.name, len(dataframe))
             except Exception as exc:
-                self.logger.warning("Failed to read %s: %s", p, exc)
+                self.logger.warning("Failed to read %s: %s", csv_path, exc)
         if not rows:
             return pd.DataFrame()
         return pd.concat(rows, ignore_index=True)
 
     def _extract_image_candidates_from_value(self, value: str) -> List[str]:
-        """Produce a short list of candidate keys (rel path and filename) for fast lookup."""
-        v = str(value).strip()
-        if not v:
+        """Produce a short list of candidate image keys for fast lookup."""
+        raw_value = str(value).strip()
+        if not raw_value:
             return []
+
         candidates: List[str] = []
-        # normalize separators
-        v_posix = v.replace("\\", "/")
-        # If value already looks like a relative path under jpeg/, strip leading 'jpeg/' if present
-        if v_posix.lower().startswith("jpeg/"):
-            rel = v_posix[len("jpeg/"):].lstrip("/")
-            candidates.append(rel.lower())
-        # full relative path candidate
-        if "/" in v_posix:
-            candidates.append(v_posix.lstrip("/").lower())
-            candidates.append(Path(v_posix).name.lower())
+        normalized_value = raw_value.replace("\\", "/")
+
+        if normalized_value.lower().startswith("jpeg/"):
+            relative_path = normalized_value[len("jpeg/"):].lstrip("/")
+            candidates.append(relative_path.lower())
+
+        if "/" in normalized_value:
+            candidates.append(normalized_value.lstrip("/").lower())
+            candidates.append(Path(normalized_value).name.lower())
         else:
-            candidates.append(v_posix.lower())
-        # try adding common jpg extensions if missing
-        if not any(v.lower().endswith(ext) for ext in [".jpg", ".jpeg"]):
-            candidates.extend([v.lower() + ".jpg", v.lower() + ".jpeg"])  # type: ignore[arg-type]
-        # dedupe while preserving order
-        seen = set()
-        out = []
-        for c in candidates:
-            if c and c not in seen:
-                seen.add(c)
-                out.append(c)
-        return out
+            candidates.append(normalized_value.lower())
+
+        if not any(raw_value.lower().endswith(ext) for ext in [".jpg", ".jpeg"]):
+            candidates.extend([raw_value.lower() + ".jpg", raw_value.lower() + ".jpeg"])  # type: ignore[arg-type]
+
+        seen_candidates = set()
+        unique_candidates = []
+        for candidate in candidates:
+            if candidate and candidate not in seen_candidates:
+                seen_candidates.add(candidate)
+                unique_candidates.append(candidate)
+        return unique_candidates
 
     def _resolve_with_reason(self, value: str) -> Tuple[Optional[Path], str, Optional[str]]:
         """Resolve image and return (path, reason, matched_candidate).
@@ -333,59 +362,56 @@ class CBISDDMSplitter:
             return p
         return None
 
+    def _iter_row_values(self, row):
+        """Yield column/value pairs for a metadata row."""
+        if hasattr(row, "_fields"):
+            for field_name in row._fields:
+                yield field_name, getattr(row, field_name)
+        else:
+            for field_name in row.index:
+                yield field_name, row.get(field_name)
+
+    def _normalize_column_name(self, column_name: object) -> str:
+        """Normalize a column name into a lowercase, whitespace-safe form."""
+        if not isinstance(column_name, str):
+            return ""
+        return column_name.lower().replace("_", " ").strip()
+
+    def _find_first_text_value(
+        self,
+        row,
+        preferred_column_names: List[str],
+        fallback_keywords: Tuple[str, ...] = (),
+        excluded_keywords: Tuple[str, ...] = (),
+    ) -> Optional[str]:
+        """Find the first non-empty text value using preferred names and keyword fallbacks."""
+        for column_name, value in self._iter_row_values(row):
+            if not isinstance(column_name, str):
+                continue
+            normalized_name = self._normalize_column_name(column_name)
+            if normalized_name in preferred_column_names and isinstance(value, str) and value.strip():
+                return value.strip()
+
+        for column_name, value in self._iter_row_values(row):
+            if not isinstance(column_name, str):
+                continue
+            normalized_name = self._normalize_column_name(column_name)
+            if not isinstance(value, str) or not value.strip():
+                continue
+            if any(keyword in normalized_name for keyword in fallback_keywords) and not any(
+                excluded_keyword in normalized_name for excluded_keyword in excluded_keywords
+            ):
+                return value.strip()
+        return None
+
     def _infer_image_and_label_from_row(self, row) -> Optional[Tuple[Path, int]]:
-        """Extract image reference and label from a metadata row.
-
-        The function inspects common metadata columns without performing expensive
-        image scans.
-        """
-        def _get_column_value(column_name: str):
-            if hasattr(row, "_fields"):
-                sanitized = column_name.lower().replace(" ", "_")
-                if column_name in row._fields:
-                    return getattr(row, column_name)
-                if sanitized in row._fields:
-                    return getattr(row, sanitized)
-                return None
-            return row.get(column_name)
-
-        def _iter_columns():
-            if hasattr(row, "_fields"):
-                for field in row._fields:
-                    yield field, getattr(row, field)
-            else:
-                for field in row.index:
-                    yield field, row.get(field)
-
-        image_value = None
-        preferred_image_cols = [
-            "image file path",
-            "cropped image file path",
-            "roi mask file path",
-            "cropped image file",
-            "roi_mask_file_path",
-        ]
-
-        for pref in preferred_image_cols:
-            for col, val in _iter_columns():
-                if not isinstance(col, str):
-                    continue
-                if col.lower().replace("_", " ").strip() == pref:
-                    if isinstance(val, str) and val.strip():
-                        image_value = val.strip()
-                        break
-            if image_value:
-                break
-
-        if not image_value:
-            for col, val in _iter_columns():
-                if not isinstance(col, str):
-                    continue
-                name = col.lower().replace("_", " ")
-                if "image" in name or "file" in name or "filepath" in name:
-                    if isinstance(val, str) and val.strip():
-                        image_value = val.strip()
-                        break
+        """Extract the image reference and binary label from a metadata row."""
+        image_value = self._find_first_text_value(
+            row,
+            preferred_column_names=PREFERRED_IMAGE_COLUMNS,
+            fallback_keywords=("image", "file", "filepath"),
+            excluded_keywords=(),
+        )
 
         if not image_value:
             if self.debug:
@@ -395,36 +421,12 @@ class CBISDDMSplitter:
                     self._debug_fail_count += 1
             return None
 
-        label_value = None
-        preferred_label_cols = {
-            "pathology",
-            "pathology_status",
-            "pathology description",
-            "pathology_type",
-            "biopsy result",
-            "biopsy_result",
-            "assessment",
-            "assessment code",
-        }
-
-        for col, val in _iter_columns():
-            if not isinstance(col, str):
-                continue
-            lname = col.lower().replace("_", " ").strip()
-            if lname in preferred_label_cols:
-                if isinstance(val, str) and val.strip():
-                    label_value = val.strip()
-                    break
-
-        if label_value is None:
-            for col, val in _iter_columns():
-                if not isinstance(col, str):
-                    continue
-                lname = col.lower().replace("_", " ")
-                if any(k in lname for k in ("path", "biopsy", "assessment")) and "image" not in lname and "file" not in lname:
-                    if isinstance(val, str) and val.strip():
-                        label_value = val.strip()
-                        break
+        label_value = self._find_first_text_value(
+            row,
+            preferred_column_names=PREFERRED_LABEL_COLUMNS,
+            fallback_keywords=("path", "biopsy", "assessment"),
+            excluded_keywords=("image", "file"),
+        )
 
         label = infer_label_from_text(label_value)
         if label is None:
@@ -485,7 +487,7 @@ class CBISDDMSplitter:
         return img_path.resolve(), label
 
     def prepare(self) -> Dict[str, Path]:
-        """Main entrypoint: generate train/val CSVs at the configured output directory."""
+        """Generate the train/validation CSV files in the configured output directory."""
         self.logger.info("Preparing dataset from %s", self.dataset_root)
 
         train_meta = self._read_csv_files(TRAIN_CSV_FILENAMES)
@@ -499,9 +501,8 @@ class CBISDDMSplitter:
             res = self._infer_image_and_label_from_row(row)
             self.logger.info("TEST RESULT: %s", res)
 
-        # If debug mode is enabled, run a diagnostics pass that also builds examples.
+        # Diagnostic pass is optional and only affects logging output.
         if self.debug:
-            # Print first 10 metadata identifiers
             self.logger.info("--- Debug: first 10 metadata image identifiers ---")
             meta_ids = []
             for _, row in train_meta.iterrows():
@@ -526,7 +527,6 @@ class CBISDDMSplitter:
             for mid in meta_ids:
                 self.logger.info("  %s", mid)
 
-            # Print first 10 indexed entries
             self.logger.info("--- Debug: first 10 indexed rel_map keys ---")
             for k in list(self.rel_map.keys())[:10]:
                 self.logger.info("  %s", k)
@@ -534,14 +534,12 @@ class CBISDDMSplitter:
             for k in list(self.name_map.keys())[:10]:
                 self.logger.info("  %s", k)
 
-            # Diagnostics and example building pass
             total_rows = 0
             resolved_rows = 0
             failed_rows = 0
             examples = []
             for _, row in train_meta.iterrows():
                 total_rows += 1
-                # helper to get preferred field
                 def _get_field(r, name):
                     for col in r.index:
                         if isinstance(col, str) and col.lower().strip() == name:
@@ -553,7 +551,6 @@ class CBISDDMSplitter:
                 image_fp = _get_field(row, "image file path")
                 cropped_fp = _get_field(row, "cropped image file path")
                 roi_fp = _get_field(row, "roi mask file path")
-                # fallback image field
                 if not image_fp:
                     for col in row.index:
                         if isinstance(col, str) and ("image" in col.lower() or "file" in col.lower() or "filepath" in col.lower()):
@@ -562,7 +559,6 @@ class CBISDDMSplitter:
                                 image_fp = val.strip()
                                 break
 
-                # label extraction
                 label_value = None
                 preferred_label_cols = {
                     "pathology",
@@ -614,7 +610,6 @@ class CBISDDMSplitter:
                     failed_rows += 1
 
                 if total_rows <= 20:
-                    # Log per-row diagnostics only for first 20 rows
                     self.logger.info("--- Metadata row %d diagnostics ---", total_rows)
                     self.logger.info("  image_file_path: %s", image_fp)
                     self.logger.info("  cropped_image_file_path: %s", cropped_fp)
@@ -631,19 +626,17 @@ class CBISDDMSplitter:
             self.logger.info("  failed rows: %d", failed_rows)
             pct = (resolved_rows / total_rows * 100.0) if total_rows else 0.0
             self.logger.info("  resolution percentage: %.2f%%", pct)
-            # dedupe examples
             examples = list({(p, l) for p, l in examples})
 
         if train_meta.empty and test_meta.empty:
             raise RuntimeError("No metadata CSVs could be loaded from csv/ directory.")
 
         examples: List[Tuple[str, int]] = []
-        seen = set()
+        seen_examples = set()
         processed_rows = len(train_meta)
         resolved_rows = 0
 
-        # build examples from training metadata (O(N_rows) with O(1) image lookups)
-        # Use Series rows so columns with spaces are preserved and can be resolved.
+        # Build examples from training metadata using row-wise lookups only.
         for i, (_, row) in enumerate(train_meta.iterrows()):
             if i % 1000 == 0:
                 self.logger.info("Processed %d rows", i)
@@ -654,10 +647,10 @@ class CBISDDMSplitter:
                 continue
             resolved_rows += 1
             img_path, label = res
-            key = (str(img_path), label)
-            if key in seen:
+            example_key = (str(img_path), label)
+            if example_key in seen_examples:
                 continue
-            seen.add(key)
+            seen_examples.add(example_key)
             examples.append((str(img_path), label))
 
         if not examples:
@@ -674,24 +667,20 @@ class CBISDDMSplitter:
 
         df = pd.DataFrame(examples, columns=["image_path", "label"])
 
-        # Basic validations
-        # 1) Check duplicates
+        # Basic validations.
         before = len(df)
         df = df.drop_duplicates(subset=["image_path", "label"]).reset_index(drop=True)
         after = len(df)
         if before != after:
             self.logger.info("Dropped %d duplicate rows", before - after)
 
-        # 2) Missing labels
         if df["label"].isnull().any():
             raise RuntimeError("Missing labels detected in prepared examples.")
 
-        # 3) Ensure all image files exist
         missing = [p for p in df["image_path"] if not Path(p).is_file()]
         if missing:
             raise RuntimeError(f"Some images are missing from disk (first example): {missing[0]}")
 
-        # Stratified split
         n_classes = len(df["label"].unique())
         if n_classes < 2:
             raise RuntimeError("Need at least two classes to perform stratified split.")
@@ -713,14 +702,12 @@ class CBISDDMSplitter:
             df, test_size=test_size, stratify=df["label"], random_state=42
         )
 
-        # Ensure required output format: image_path,label
         self.output_dir.mkdir(parents=True, exist_ok=True)
         train_out = self.output_dir / "train.csv"
         val_out = self.output_dir / "val.csv"
         train_df.to_csv(train_out, index=False, columns=["image_path", "label"])
         val_df.to_csv(val_out, index=False, columns=["image_path", "label"])
 
-        # Print/Log distributions and counts
         train_dist = train_df["label"].value_counts().to_dict()
         val_dist = val_df["label"].value_counts().to_dict()
         self.logger.info("Train distribution: %s", train_dist)
@@ -732,6 +719,7 @@ class CBISDDMSplitter:
 
 
 def main() -> None:
+    """Run dataset preparation from the command line."""
     args = parse_args()
     splitter = CBISDDMSplitter(dataset_root=args.dataset_root, output_dir=args.output_dir, val_size=args.val_size)
     splitter.debug = getattr(args, 'debug_resolver', False)

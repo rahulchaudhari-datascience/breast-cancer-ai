@@ -1,8 +1,9 @@
-# pipelines/inference_pipeline.py
+"""End-to-end inference pipeline for mammogram analysis."""
 
 from __future__ import annotations
 
 from typing import Dict, Optional
+import logging
 
 import cv2
 import numpy as np
@@ -18,29 +19,11 @@ from services.explainability_service import ExplainabilityService
 from services.report_service import ReportService
 
 
-class BreastCancerInferencePipeline:
-    # """
-    # End-to-end inference pipeline.
+logger = logging.getLogger(__name__)
 
-    # Flow:
-    #     Input Mammogram
-    #         ↓
-    #     Preprocessing
-    #         ↓
-    #     Segmentation
-    #         ↓
-    #     ROI Extraction
-    #         ↓
-    #     Classification
-    #         ↓
-    #     BI-RADS Prediction
-    #         ↓
-    #     Confidence Analysis
-    #         ↓
-    #     Grad-CAM++
-    #         ↓
-    #     PDF Report
-    # """
+
+class BreastCancerInferencePipeline:
+    """Coordinate preprocessing, segmentation, classification, and reporting."""
 
     def __init__(self):
         self.preprocessing_service = PreprocessingService()
@@ -111,7 +94,7 @@ class BreastCancerInferencePipeline:
                 birads_confidence=birads_result["confidence"],
             )
         except Exception as exc:
-            print(f"[ERROR] Inference pipeline failed: {exc}")
+            logger.exception("Inference pipeline failed: %s", exc)
             return {
                 "status": "error",
                 "error": str(exc),
@@ -124,7 +107,7 @@ class BreastCancerInferencePipeline:
             )
         except Exception as exc:
             heatmap = None
-            print(f"[WARNING] Explainability generation failed: {exc}")
+            logger.warning("Explainability generation failed: %s", exc)
 
         report_path: Optional[str] = None
 
@@ -139,7 +122,7 @@ class BreastCancerInferencePipeline:
                 )
             except Exception as exc:
                 report_path = None
-                print(f"[WARNING] Report generation failed: {exc}")
+                logger.warning("Report generation failed: %s", exc)
 
         return {
             "original": original_image,

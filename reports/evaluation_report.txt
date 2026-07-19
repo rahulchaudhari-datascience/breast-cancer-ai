@@ -3,8 +3,8 @@ ROC-AUC: 0.5000
 Precision: 0.5000
 Recall: 1.0000
 F1-score: 0.6667
-Confusion matrix: D:\Downloads\breast-cancer-ai\reports\confusion_matrix.png
-ROC curve: D:\Downloads\breast-cancer-ai\reports\roc_curve.png
+Confusion matrix: reports\confusion_matrix.png
+ROC curve: reports\roc_curve.png
 Classification report:
               precision    recall  f1-score   support
 

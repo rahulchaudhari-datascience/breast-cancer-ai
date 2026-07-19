@@ -1,4 +1,6 @@
 
+"""Metric helpers used by training and evaluation pipelines."""
+
 from typing import Dict, Any
 
 import numpy as np
@@ -17,6 +19,16 @@ class MetricsUtils:
     """Collection of classification and segmentation metric helpers."""
 
     @staticmethod
+    def _as_numpy_array(values):
+        """Convert sequence-like inputs into a NumPy array."""
+        return np.asarray(values)
+
+    @staticmethod
+    def _safe_divide(numerator: float, denominator: float) -> float:
+        """Return a guarded division result for metric calculations."""
+        return float(numerator / denominator) if denominator > 0 else 0.0
+
+    @staticmethod
     def classification_metrics(
         y_true, y_pred, y_prob=None
     ) -> Dict[str, Any]:
@@ -29,8 +41,8 @@ class MetricsUtils:
             raise ValueError("Empty y_true or y_pred passed to classification_metrics.")
 
         metrics: Dict[str, Any] = {}
-        y_true_arr = np.asarray(y_true)
-        y_pred_arr = np.asarray(y_pred)
+        y_true_arr = MetricsUtils._as_numpy_array(y_true)
+        y_pred_arr = MetricsUtils._as_numpy_array(y_pred)
 
         metrics["accuracy"] = float(accuracy_score(y_true_arr, y_pred_arr))
         metrics["precision"] = float(precision_score(y_true_arr, y_pred_arr, zero_division=0))
@@ -43,8 +55,8 @@ class MetricsUtils:
 
         if cm.shape == (2, 2):
             tn, fp, fn, tp = cm.ravel()
-            metrics["specificity"] = float((tn / (tn + fp)) if (tn + fp) > 0 else 0.0)
-            metrics["sensitivity"] = float((tp / (tp + fn)) if (tp + fn) > 0 else 0.0)
+            metrics["specificity"] = MetricsUtils._safe_divide(tn, tn + fp)
+            metrics["sensitivity"] = MetricsUtils._safe_divide(tp, tp + fn)
         else:
             metrics["specificity"] = 0.0
             metrics["sensitivity"] = 0.0
@@ -68,8 +80,8 @@ class MetricsUtils:
 
         Both inputs should be binary arrays (0/1) or probabilities thresholded prior to use.
         """
-        pred = np.asarray(prediction).astype(np.float32).flatten()
-        tgt = np.asarray(target).astype(np.float32).flatten()
+        pred = MetricsUtils._as_numpy_array(prediction).astype(np.float32).flatten()
+        tgt = MetricsUtils._as_numpy_array(target).astype(np.float32).flatten()
 
         intersection = np.sum(pred * tgt)
         union = np.sum(pred) + np.sum(tgt)
@@ -82,8 +94,8 @@ class MetricsUtils:
     @staticmethod
     def iou_score(prediction, target, smooth: float = 1e-6) -> float:
         """Compute Intersection over Union (IoU) for binary masks."""
-        pred = np.asarray(prediction).astype(np.float32).flatten()
-        tgt = np.asarray(target).astype(np.float32).flatten()
+        pred = MetricsUtils._as_numpy_array(prediction).astype(np.float32).flatten()
+        tgt = MetricsUtils._as_numpy_array(target).astype(np.float32).flatten()
 
         intersection = np.sum(pred * tgt)
         union = np.sum(pred) + np.sum(tgt) - intersection

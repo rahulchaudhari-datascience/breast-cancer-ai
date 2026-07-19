@@ -1,12 +1,12 @@
-# pipelines/evaluation_pipeline.py
+"""Evaluation pipeline for the trained classification model."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Dict, Optional
+import logging
 
 import cv2
-import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -16,13 +16,10 @@ from services.model_builder import build_classification_model
 
 from config import (
     DEVICE,
-    IMAGE_SIZE,
     BATCH_SIZE,
     NUM_WORKERS,
     NUM_CLASSES,
     CLASS_NAMES,
-    CLASSIFICATION_CHECKPOINT,
-    CLASSIFICATION_MODEL_NAME,
     METRICS_OUTPUT_DIR,
     PREDICTIONS_OUTPUT_DIR,
 )
@@ -30,6 +27,9 @@ from config import (
 from services.preprocessing_service import PreprocessingService
 from utils.metrics_utils import MetricsUtils
 from utils.visualization_utils import VisualizationUtils
+
+
+logger = logging.getLogger(__name__)
 
 
 class MammogramEvaluationDataset(Dataset):
@@ -152,7 +152,7 @@ class EvaluationPipeline:
                 checkpoint
             )
 
-        print(f"[INFO] Loaded checkpoint: {path}")
+        logger.info("Loaded checkpoint: %s", path)
 
     def create_loader(
         self,
@@ -283,21 +283,21 @@ class EvaluationPipeline:
 
         try:
             VisualizationUtils.plot_confusion_matrix(y_true, y_pred, str(cm_path))
-            print(f"Confusion matrix saved to: {cm_path}")
+            logger.info("Confusion matrix saved to: %s", cm_path)
         except Exception as exc:
-            print(f"[WARNING] Could not save confusion matrix: {exc}")
+            logger.warning("Could not save confusion matrix: %s", exc)
 
         try:
             VisualizationUtils.plot_roc_curve(y_true, y_prob, str(roc_path))
-            print(f"ROC curve saved to: {roc_path}")
+            logger.info("ROC curve saved to: %s", roc_path)
         except Exception as exc:
-            print(f"[WARNING] Could not save ROC curve: {exc}")
+            logger.warning("Could not save ROC curve: %s", exc)
 
-        print(f"\nEvaluation Metrics")
-        print(metrics)
+        logger.info("Evaluation Metrics")
+        logger.info("%s", metrics)
 
-        print(f"\nPredictions saved to: {predictions_path}")
-        print(f"Metrics saved to: {metrics_path}")
+        logger.info("Predictions saved to: %s", predictions_path)
+        logger.info("Metrics saved to: %s", metrics_path)
 
         return {
             "metrics": metrics,

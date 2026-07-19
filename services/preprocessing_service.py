@@ -36,8 +36,8 @@ class PreprocessingService:
         self.normalize_std = (0.229, 0.224, 0.225)
 
         self.train_transform = self._build_train_transform(image_size)
-        self.val_transform = self._build_val_transform(image_size)
-        self.model_transform = self._build_model_transform(image_size)
+        self.val_transform = self._build_evaluation_transform(image_size)
+        self.model_transform = self._build_evaluation_transform(image_size)
 
     def _build_train_transform(self, image_size: int) -> A.Compose:
         transforms = []
@@ -72,14 +72,8 @@ class PreprocessingService:
         ])
         return A.Compose(transforms)
 
-    def _build_val_transform(self, image_size: int) -> A.Compose:
-        return A.Compose([
-            A.Resize(image_size, image_size),
-            A.Normalize(mean=self.normalize_mean, std=self.normalize_std),
-            ToTensorV2(),
-        ])
-
-    def _build_model_transform(self, image_size: int) -> A.Compose:
+    def _build_evaluation_transform(self, image_size: int) -> A.Compose:
+        """Build the shared non-augmenting transform used for validation and inference."""
         return A.Compose([
             A.Resize(image_size, image_size),
             A.Normalize(mean=self.normalize_mean, std=self.normalize_std),
@@ -134,7 +128,6 @@ class PreprocessingService:
         image = self.apply_clahe(image)
         image = self.zscore_normalization(image)
 
-        size = image_size or self.image_size
         transformed = self.model_transform(image=image)["image"]
         if isinstance(transformed, torch.Tensor):
             return transformed.unsqueeze(0)

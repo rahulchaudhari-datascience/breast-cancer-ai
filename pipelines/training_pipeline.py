@@ -1,5 +1,5 @@
 
-# pipelines/training_pipeline.py
+"""Training pipeline for the EfficientNet-B0 classifier."""
 
 from __future__ import annotations
 
@@ -41,6 +41,7 @@ from config import (
     RANDOM_SEED,
     set_seed,
 )
+
 
 
 class MammogramClassificationDataset(Dataset):
@@ -287,12 +288,14 @@ class TrainingPipeline:
                 self.writer.add_scalar("Metrics/Recall", metrics.get("recall", 0.0), epoch)
                 self.writer.add_scalar("Metrics/Accuracy", metrics.get("accuracy", 0.0), epoch)
 
-                print(
-                    f"\nEpoch [{epoch + 1}/{EPOCHS}] "
-                    f"Train Loss: {train_loss:.4f} "
-                    f"Val Loss: {val_loss:.4f} "
-                    f"AUC: {metrics.get('roc_auc', 0.0):.4f} "
-                    f"F1: {metrics.get('f1_score', 0.0):.4f}"
+                self.logger.info(
+                    "Epoch [%s/%s] Train Loss: %.4f Val Loss: %.4f AUC: %.4f F1: %.4f",
+                    epoch + 1,
+                    EPOCHS,
+                    train_loss,
+                    val_loss,
+                    metrics.get("roc_auc", 0.0),
+                    metrics.get("f1_score", 0.0),
                 )
 
                 current_auc = metrics.get("roc_auc", 0.0)
@@ -303,12 +306,15 @@ class TrainingPipeline:
                     early_stop_counter = 0
 
                     self.save_checkpoint(epoch=epoch, metrics=metrics, path=EFFICIENTNET_CHECKPOINT)
-                    print("[INFO] Best model saved.")
+                    self.logger.info("Best model saved.")
                 else:
                     early_stop_counter += 1
 
                 if early_stop_counter >= EARLY_STOPPING_PATIENCE:
-                    print(f"Early stopping triggered (no improvement for {EARLY_STOPPING_PATIENCE} epochs).")
+                    self.logger.info(
+                        "Early stopping triggered (no improvement for %s epochs).",
+                        EARLY_STOPPING_PATIENCE,
+                    )
                     break
 
         finally:
@@ -406,7 +412,9 @@ class TrainingPipeline:
         epoch: int,
         metrics: Dict,
         path,
-    ):
+    ) -> None:
+
+        """Persist the current training state to disk."""
 
         checkpoint = {
             "epoch": epoch,

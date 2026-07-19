@@ -1,3 +1,5 @@
+"""Dataset-oriented helper utilities."""
+
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -6,11 +8,14 @@ from sklearn.model_selection import train_test_split
 
 
 class DataUtils:
+    """Utility collection for dataset loading, splitting, and validation."""
 
-    IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"]
+    SUPPORTED_IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"]
+    IMAGE_EXTENSIONS = SUPPORTED_IMAGE_EXTENSIONS
 
     @staticmethod
     def load_annotations(csv_path: str) -> pd.DataFrame:
+        """Load a CBIS-DDSM-style annotation CSV and validate required columns."""
         path = Path(csv_path)
         if not path.exists():
             raise FileNotFoundError(f"Annotation CSV not found: {csv_path}")
@@ -31,6 +36,7 @@ class DataUtils:
         random_state: int = 42,
         label_column: str = "label",
     ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """Create stratified train/validation/test splits."""
         if label_column not in dataframe.columns:
             raise ValueError(f"Label column '{label_column}' not found in dataframe.")
 
@@ -59,6 +65,7 @@ class DataUtils:
         image_dir: str,
         mask_dir: Optional[str] = None,
     ) -> Dict[str, int]:
+        """Count supported image artifacts present in the given directories."""
         image_dir = Path(image_dir)
 
         if not image_dir.exists():
@@ -89,6 +96,7 @@ class DataUtils:
         dataframe: pd.DataFrame,
         label_column: str = "label",
     ) -> Dict:
+        """Return class counts for the configured label column."""
         if label_column not in dataframe.columns:
             raise ValueError(f"Label column '{label_column}' not found in dataframe.")
 

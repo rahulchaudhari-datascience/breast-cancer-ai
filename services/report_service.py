@@ -22,26 +22,23 @@ from reportlab.platypus import (
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
+from services._shared import get_service_logger, normalize_uint8_image
+
 from config import REPORT_OUTPUT_DIR
 
 
 class ReportService:
-    """
-    PDF report generation service.
+    """PDF report generation service for research/demo output.
 
-    Creates a research/demo medical-style report containing:
-    - Diagnosis
-    - Confidence
-    - BI-RADS
-    - Reliability
-    - Grad-CAM heatmap
-    - Notes and disclaimer
+    The generated report includes diagnosis, confidence, BI-RADS summary,
+    reliability, explainability artifacts, and a disclaimer.
     """
 
     def __init__(
         self,
         output_dir: Optional[str] = None,
     ):
+        self.logger = get_service_logger(self.__class__.__name__)
         self.output_dir = Path(output_dir or REPORT_OUTPUT_DIR)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -200,7 +197,7 @@ class ReportService:
 
                 story.append(Spacer(1, 14))
             except Exception as exc:
-                print(f"[WARNING] Could not attach heatmap to report: {exc}")
+                self.logger.warning("Could not attach heatmap to report: %s", exc)
 
         story.append(
             Paragraph(
@@ -235,6 +232,8 @@ class ReportService:
         confidence: Dict,
     ) -> str:
 
+        """Compose the explanatory text block for the PDF report."""
+
         reliability = confidence.get("reliability", "N/A")
 
         if diagnosis.lower() == "malignant":
@@ -260,21 +259,15 @@ class ReportService:
         filename: str,
     ) -> Path:
 
+        """Normalize and save a temporary image used inside the PDF report."""
+
         path = self.output_dir / filename
         path.parent.mkdir(parents=True, exist_ok=True)
 
         if image is None:
             raise ValueError("No image provided to save.")
 
-        img = image.copy()
-
-        # Normalize float images
-        if img.dtype != np.uint8:
-            try:
-                img = np.clip(img, 0.0, 1.0)
-                img = (img * 255).astype(np.uint8)
-            except Exception:
-                img = np.clip(img, 0, 255).astype(np.uint8)
+        img = normalize_uint8_image(image.copy())
 
         # Ensure correct color ordering for cv2
         if img.ndim == 2:

@@ -1,3 +1,5 @@
+"""Factory helpers for building model backbones used across services."""
+
 from __future__ import annotations
 
 from typing import Optional
