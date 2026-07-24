@@ -16,7 +16,7 @@ MODELS_DIR.mkdir(exist_ok=True)
 
 
 def download_model(
-    model_type: str,  # "classification", "segmentation"
+    model_type: str,
     force_download: bool = False,
 ) -> Path:
     """Return the expected local path for a trained model artifact.

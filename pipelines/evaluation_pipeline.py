@@ -20,6 +20,7 @@ from config import (
     NUM_WORKERS,
     NUM_CLASSES,
     CLASS_NAMES,
+    CLASSIFICATION_CHECKPOINT,
     METRICS_OUTPUT_DIR,
     PREDICTIONS_OUTPUT_DIR,
 )
@@ -103,7 +104,7 @@ class EvaluationPipeline:
     ):
         self.device = DEVICE
         self.model_name = model_name
-        self.checkpoint_path = checkpoint_path or str(CONVNEXT_CHECKPOINT)
+        self.checkpoint_path = checkpoint_path or str(CLASSIFICATION_CHECKPOINT)
 
         self.model = self._build_model()
         self._load_checkpoint()

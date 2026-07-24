@@ -10,10 +10,7 @@ import numpy as np
 import torch
 
 from services.preprocessing_service import PreprocessingService
-from services.segmentation_service import SegmentationService
-from services.roi_service import ROIService
 from services.classification_service import ClassificationService
-from services.birads_service import BIRADSService
 from services.confidence_service import ConfidenceService
 from services.explainability_service import ExplainabilityService
 from services.report_service import ReportService
@@ -23,14 +20,11 @@ logger = logging.getLogger(__name__)
 
 
 class BreastCancerInferencePipeline:
-    """Coordinate preprocessing, segmentation, classification, and reporting."""
+    """Coordinate preprocessing, classification, explainability, and reporting."""
 
     def __init__(self):
         self.preprocessing_service = PreprocessingService()
-        self.segmentation_service = SegmentationService()
-        self.roi_service = ROIService()
         self.classification_service = ClassificationService()
-        self.birads_service = BIRADSService()
         self.confidence_service = ConfidenceService()
 
         self.explainability_service = ExplainabilityService(
@@ -60,29 +54,12 @@ class BreastCancerInferencePipeline:
                 training=False,
             )
 
-            mask = self.segmentation_service.segment(processed_tensor)
-
             processed_image = self._tensor_to_rgb_image(
                 processed_tensor,
             )
 
-            roi_result = self.roi_service.extract(
-                processed_image,
-                mask,
-            )
-
-            roi_status = roi_result.get("status", "success")
-            roi = roi_result.get("roi")
-            if roi is None:
-                roi = processed_image
-                roi_status = "fallback_to_full_image"
-
             classification_result = self.classification_service.predict(
-                roi,
-            )
-
-            birads_result = self.birads_service.predict(
-                roi,
+                processed_image,
             )
 
             confidence_result = self.confidence_service.analyze(
@@ -91,7 +68,6 @@ class BreastCancerInferencePipeline:
 
             final_confidence = self.confidence_service.combine_confidence(
                 classification_confidence=classification_result["confidence"],
-                birads_confidence=birads_result["confidence"],
             )
         except Exception as exc:
             logger.exception("Inference pipeline failed: %s", exc)
@@ -102,7 +78,7 @@ class BreastCancerInferencePipeline:
 
         try:
             heatmap = self.explainability_service.generate(
-                roi=roi,
+                image=processed_image,
                 class_id=classification_result["class_id"],
             )
         except Exception as exc:
@@ -115,7 +91,6 @@ class BreastCancerInferencePipeline:
             try:
                 report_path = self.report_service.generate(
                     prediction=classification_result,
-                    birads=birads_result,
                     confidence=final_confidence,
                     heatmap=heatmap,
                     patient_id=patient_id,
@@ -127,18 +102,11 @@ class BreastCancerInferencePipeline:
         return {
             "original": original_image,
             "processed": processed_image,
-            "mask": mask,
-            "roi": roi,
-            "roi_overlay": roi_result.get("overlay"),
-            "bbox": roi_result.get("bbox"),
-            "roi_status": roi_status,
             "prediction": classification_result["prediction"],
             "class_id": classification_result["class_id"],
             "probability": classification_result["probability"],
             "confidence": classification_result["confidence"],
             "probabilities": classification_result["probabilities"],
-            "birads": birads_result["birads"],
-            "birads_confidence": birads_result["confidence"],
             "uncertainty": confidence_result["uncertainty"],
             "reliability": final_confidence["reliability"],
             "final_confidence": final_confidence["final_confidence"],

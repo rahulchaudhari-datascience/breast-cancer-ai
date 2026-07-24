@@ -87,20 +87,20 @@ class ClassificationService:
                 exc,
             )
 
-    def preprocess_roi(
+    def preprocess_image(
         self,
-        roi: np.ndarray,
+        image: np.ndarray,
     ) -> torch.Tensor:
-        """Apply the shared preprocessing pipeline to an ROI crop."""
-        return self.preprocessing.preprocess_for_model(roi)
+        """Apply the shared preprocessing pipeline to a mammogram image."""
+        return self.preprocessing.preprocess_for_model(image)
 
     @torch.no_grad()
     def predict(
         self,
-        roi: np.ndarray,
+        image: np.ndarray,
     ) -> Dict:
 
-        tensor = self.preprocess_roi(roi).to(self.device)
+        tensor = self.preprocess_image(image).to(self.device)
 
         logits = self.model(tensor)
 
@@ -130,9 +130,9 @@ class ClassificationService:
 
     def predict_batch(
         self,
-        rois: list[np.ndarray],
+        images: list[np.ndarray],
     ) -> list[Dict]:
-        """Run prediction on a batch of ROI crops while preserving the single-item contract."""
-        return [self.predict(roi) for roi in rois]
+        """Run prediction on a batch of mammogram images."""
+        return [self.predict(image) for image in images]
 
 

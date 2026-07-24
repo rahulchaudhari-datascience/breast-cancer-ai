@@ -8,7 +8,7 @@
 
 ## Project Title
 
-Breast Cancer AI is an explainable machine learning system for mammogram analysis. It combines preprocessing, lesion segmentation, binary classification, BI-RADS-style assessment, uncertainty estimation, Grad-CAM visualization, and report generation in a single workflow.
+Breast Cancer AI is an explainable machine learning system for mammogram analysis. It combines image preprocessing, EfficientNet-B0 binary classification, confidence estimation, Grad-CAM visualization, and report generation in a single workflow.
 
 ## Project Status
 
@@ -30,9 +30,7 @@ The system is intended for experimentation, education, and research. It is not i
 ## Key Features
 
 - End-to-end mammogram inference pipeline
-- Tumor region segmentation support
 - Benign vs. malignant classification
-- BI-RADS-inspired confidence scoring
 - Grad-CAM++ explainability visualizations
 - PDF report generation
 - Streamlit UI and FastAPI API
@@ -46,13 +44,11 @@ flowchart LR
   B --> C[EfficientNet-B0 Training]
   C --> D[Validation and Reporting]
   E[Mammogram Image] --> F[Preprocessing]
-  F --> G[Segmentation]
-  G --> H[ROI Extraction]
-  H --> I[Classification]
-  I --> J[BI-RADS and Confidence]
-  I --> K[Grad-CAM++]
-  J --> L[Streamlit UI / FastAPI API / PDF Report]
-  K --> L
+  F --> G[EfficientNet-B0 Classification]
+  G --> H[Confidence]
+  G --> I[Grad-CAM++]
+  H --> J[Streamlit UI / FastAPI API / PDF Report]
+  I --> J
 ```
 
 ## Dataset (CBIS-DDSM)

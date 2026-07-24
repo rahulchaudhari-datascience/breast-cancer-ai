@@ -16,7 +16,7 @@ from sklearn.metrics import (
 
 
 class MetricsUtils:
-    """Collection of classification and segmentation metric helpers."""
+    """Collection of classification metric helpers."""
 
     @staticmethod
     def _as_numpy_array(values):
@@ -74,36 +74,6 @@ class MetricsUtils:
 
         return metrics
 
-    @staticmethod
-    def dice_score(prediction, target, smooth: float = 1e-6) -> float:
-        """Compute Dice coefficient for binary masks.
-
-        Both inputs should be binary arrays (0/1) or probabilities thresholded prior to use.
-        """
-        pred = MetricsUtils._as_numpy_array(prediction).astype(np.float32).flatten()
-        tgt = MetricsUtils._as_numpy_array(target).astype(np.float32).flatten()
-
-        intersection = np.sum(pred * tgt)
-        union = np.sum(pred) + np.sum(tgt)
-
-        if union == 0:
-            return 1.0 if np.sum(tgt) == 0 else 0.0
-
-        return float((2.0 * intersection + smooth) / (union + smooth))
-
-    @staticmethod
-    def iou_score(prediction, target, smooth: float = 1e-6) -> float:
-        """Compute Intersection over Union (IoU) for binary masks."""
-        pred = MetricsUtils._as_numpy_array(prediction).astype(np.float32).flatten()
-        tgt = MetricsUtils._as_numpy_array(target).astype(np.float32).flatten()
-
-        intersection = np.sum(pred * tgt)
-        union = np.sum(pred) + np.sum(tgt) - intersection
-
-        if union == 0:
-            return 1.0 if np.sum(tgt) == 0 else 0.0
-
-        return float((intersection + smooth) / (union + smooth))
 
 
 

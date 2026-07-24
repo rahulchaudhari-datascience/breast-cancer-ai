@@ -59,9 +59,9 @@ def prepare_image_for_gradcam(image: np.ndarray) -> np.ndarray:
     """Convert an image to the format expected by the explainability pipeline."""
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     processed = PreprocessingService().preprocess(image, training=False)
-    roi = processed.permute(1, 2, 0).cpu().numpy()
-    roi = (roi - roi.min()) / (roi.max() - roi.min() + 1e-8)
-    return (roi * 255).astype("uint8")
+    processed_image = processed.permute(1, 2, 0).cpu().numpy()
+    processed_image = (processed_image - processed_image.min()) / (processed_image.max() - processed_image.min() + 1e-8)
+    return (processed_image * 255).astype("uint8")
 
 
 def generate_heatmap_for_image(image_path: Path, output_dir: Path, classification_service, explainability_service) -> None:
@@ -71,11 +71,11 @@ def generate_heatmap_for_image(image_path: Path, output_dir: Path, classificatio
         LOGGER.info("Skipping invalid image: %s", image_path)
         return
 
-    roi = prepare_image_for_gradcam(image)
-    predicted = classification_service.predict(roi)
+    processed_image = prepare_image_for_gradcam(image)
+    predicted = classification_service.predict(processed_image)
     output_path = output_dir / f"{image_path.stem}_gradcam.png"
     heatmap = explainability_service.generate(
-        roi=roi,
+        image=processed_image,
         class_id=predicted["class_id"],
         save_path=str(output_path),
     )

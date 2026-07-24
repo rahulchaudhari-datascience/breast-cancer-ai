@@ -38,9 +38,7 @@ def render_header() -> None:
         **Research-level AI system for mammogram analysis**
 
         Features:
-        - Tumor segmentation
         - Benign / malignant classification
-        - BI-RADS prediction
         - Confidence estimation
         - Grad-CAM++ explainability
         - PDF report generation
@@ -110,29 +108,23 @@ def render_results(result: Dict[str, Any], generate_report: bool) -> None:
     """Render the prediction results and supporting visualizations."""
     st.success("Analysis Completed")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     with col1:
         st.metric("Prediction", result["prediction"])
     with col2:
         st.metric("Cancer Confidence", f"{result['confidence']:.2f}%")
-    with col3:
-        st.metric("BI-RADS", result["birads"])
 
-    col4, col5, col6 = st.columns(3)
-    with col4:
-        st.metric("BI-RADS Confidence", f"{result['birads_confidence']:.2f}%")
-    with col5:
+    col3, col4 = st.columns(2)
+    with col3:
         st.metric("Final Confidence", f"{result['final_confidence']:.2f}%")
-    with col6:
+    with col4:
         st.metric("Reliability", result["reliability"])
 
     st.divider()
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    tab1, tab2, tab3 = st.tabs(
         [
             "Processed Image",
-            "Segmentation",
-            "ROI",
             "Grad-CAM++",
             "Raw Results",
         ]
@@ -146,31 +138,6 @@ def render_results(result: Dict[str, Any], generate_report: bool) -> None:
         )
 
     with tab2:
-        st.image(
-            result["mask"],
-            caption="Predicted Tumor Mask",
-            use_container_width=True,
-        )
-
-        roi_overlay = result.get("roi_overlay")
-        if roi_overlay is not None:
-            st.image(
-                roi_overlay,
-                caption="Detected ROI Bounding Box",
-                use_container_width=True,
-            )
-        else:
-            st.info("ROI overlay unavailable.")
-
-    with tab3:
-        st.image(
-            result["roi"],
-            caption="Extracted ROI",
-            use_container_width=True,
-        )
-        st.write("Bounding Box:", result["bbox"])
-
-    with tab4:
         if result["heatmap"] is not None:
             st.image(
                 result["heatmap"],
@@ -180,7 +147,7 @@ def render_results(result: Dict[str, Any], generate_report: bool) -> None:
         else:
             st.info("Grad-CAM++ explainability heatmap was unavailable.")
 
-    with tab5:
+    with tab3:
         st.json(
             {
                 "prediction": result["prediction"],
@@ -188,12 +155,9 @@ def render_results(result: Dict[str, Any], generate_report: bool) -> None:
                 "probability": result["probability"],
                 "confidence": result["confidence"],
                 "probabilities": result["probabilities"],
-                "birads": result["birads"],
-                "birads_confidence": result["birads_confidence"],
                 "uncertainty": result["uncertainty"],
                 "reliability": result["reliability"],
                 "final_confidence": result["final_confidence"],
-                "bbox": result["bbox"],
                 "status": result["status"],
             }
         )

@@ -87,9 +87,6 @@ async def predict(
         "class_id": int(result.get("class_id")) if result.get("class_id") is not None else None,
         "probability": float(result.get("probability")) if result.get("probability") is not None else None,
         "confidence": float(result.get("confidence")) if result.get("confidence") is not None else None,
-        "birads": result.get("birads"),
-        "birads_confidence": float(result.get("birads_confidence")) if result.get("birads_confidence") is not None else None,
-        "roi_status": result.get("roi_status"),
         "report_path": result.get("report_path"),
     }
 

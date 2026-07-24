@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide explains how to train the U-Net++ segmentation and ConvNeXt classification models in Google Colab, then download them for local inference.
+This guide explains how to train the EfficientNet-B0 classification model in Google Colab, then download it for local inference.
 
 ## Setup in Google Colab
 
@@ -25,7 +25,7 @@ Or manually upload the project files.
 ### Step 3: Install Dependencies
 
 ```bash
-!pip install -q torch torchvision timm albumentations segmentation-models-pytorch \
+!pip install -q torch torchvision timm albumentations \
   scikit-learn pandas opencv-python grad-cam reportlab PyYAML tqdm
 ```
 
@@ -33,14 +33,13 @@ Or manually upload the project files.
 
 1. Create folders in Google Drive:
    - `/breast-cancer-ai/datasets/raw/` — original images
-   - `/breast-cancer-ai/datasets/masks/` — segmentation masks (same names as images)
    - `/breast-cancer-ai/datasets/annotations/` — CSV with labels
 
 2. CSV format (`datasets/annotations/labels.csv`):
    ```
-   image_id,label,birads
-   mammo_001.png,malignant,5
-   mammo_002.png,benign,2
+    image_id,label
+    mammo_001.png,malignant
+    mammo_002.png,benign
    ...
    ```
 
@@ -53,35 +52,6 @@ Or manually upload the project files.
 ---
 
 ## Training Workflow
-
-### Segmentation Training (U-Net++)
-
-```python
-import sys
-sys.path.insert(0, '/content/drive/MyDrive/breast-cancer-ai')
-
-from pipelines.training_pipeline import SegmentationTrainingPipeline
-from config import DEVICE
-
-# Initialize pipeline
-pipeline = SegmentationTrainingPipeline(
-    model_save_dir='/content/drive/MyDrive/breast-cancer-ai/models',
-    batch_size=8,
-    epochs=50,
-)
-
-# Train segmentation model
-seg_metrics = pipeline.train(
-    csv_path='datasets/annotations/labels.csv',
-    images_dir='datasets/raw',
-    masks_dir='datasets/masks',
-    validation_split=0.2,
-    early_stopping_patience=10,
-)
-
-print("Segmentation training complete!")
-print(seg_metrics)
-```
 
 ### Classification Training (EfficientNet-B0)
 
@@ -120,7 +90,6 @@ for model in models_dir.glob('*.pth'):
 1. After training completes, go to Google Drive folder `/breast-cancer-ai/models/`
 2. Download:
    - `classification_model.pth`
-   - `segmentation_model.pth`
 3. Place in your local `./models/` folder
 
 ### Tensorboard Monitoring (Optional)
@@ -167,7 +136,7 @@ streamlit run app.py
 - GPU acceleration is automatic in Colab
 - Checkpoints are saved every epoch; best model is selected based on validation loss
 - Training time: ~2-4 hours per model on Colab GPU
-- Generated models are ~500MB each
+- The generated classifier checkpoint is stored in the `models/` directory.
 
 ---
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Dict
 
 import numpy as np
 import torch
@@ -106,19 +106,11 @@ class ConfidenceService:
     def combine_confidence(
         self,
         classification_confidence: float,
-        birads_confidence: Optional[float] = None,
-        segmentation_quality: Optional[float] = None,
     ) -> Dict:
 
-        """Combine multiple confidence sources into a single summary value."""
+        """Combine available confidence sources into a single summary value."""
 
         values = [classification_confidence]
-
-        if birads_confidence is not None:
-            values.append(birads_confidence)
-
-        if segmentation_quality is not None:
-            values.append(segmentation_quality)
 
         final_confidence = float(np.mean(values))
 

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 from sklearn.metrics import ConfusionMatrixDisplay, auc, confusion_matrix, roc_curve
 
-from utils._shared import ensure_rgb, normalize_mask_to_uint8
+from utils._shared import ensure_rgb
 
 
 class VisualizationUtils:
@@ -27,24 +27,6 @@ class VisualizationUtils:
         plt.title(title)
         plt.axis("off")
         plt.show()
-
-    @staticmethod
-    def overlay_mask(
-        image: np.ndarray,
-        mask: np.ndarray,
-        alpha: float = 0.4,
-    ) -> np.ndarray:
-        """Overlay a binary mask on top of an image."""
-        if image is None or mask is None:
-            raise ValueError("Image and mask must not be None.")
-
-        image = ensure_rgb(image)
-        mask_arr = normalize_mask_to_uint8(mask)
-
-        colored_mask = np.zeros_like(image)
-        colored_mask[:, :, 0] = mask_arr
-
-        return cv2.addWeighted(image, 1 - alpha, colored_mask, alpha, 0)
 
     @staticmethod
     def plot_confusion_matrix(

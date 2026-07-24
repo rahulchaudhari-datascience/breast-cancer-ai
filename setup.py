@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 PROJECT_NAME = "Breast Cancer AI"
-DEFAULT_MODELS = ("classification_model.pth", "segmentation_model.pth")
+DEFAULT_MODELS = ("classification_model.pth",)
 AVAILABLE_COMMANDS = ("check", "install", "serve", "ui")
 
 
@@ -56,7 +56,6 @@ def check_dependencies() -> None:
         "timm",
         "opencv",
         "albumentations",
-        "segmentation_models",
         "grad_cam",
         "fastapi",
         "streamlit",

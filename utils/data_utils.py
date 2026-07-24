@@ -1,7 +1,7 @@
 """Dataset-oriented helper utilities."""
 
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Tuple
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -63,9 +63,8 @@ class DataUtils:
     def verify_dataset(
         cls,
         image_dir: str,
-        mask_dir: Optional[str] = None,
     ) -> Dict[str, int]:
-        """Count supported image artifacts present in the given directories."""
+        """Count supported image artifacts present in the image directory."""
         image_dir = Path(image_dir)
 
         if not image_dir.exists():
@@ -76,20 +75,7 @@ class DataUtils:
             if path.suffix.lower() in cls.IMAGE_EXTENSIONS
         ]
 
-        report = {"images_found": len(images)}
-
-        if mask_dir is not None:
-            mask_dir = Path(mask_dir)
-            if not mask_dir.exists():
-                raise FileNotFoundError(f"Mask directory not found: {mask_dir}")
-
-            masks = [
-                path for path in mask_dir.rglob("*")
-                if path.suffix.lower() in cls.IMAGE_EXTENSIONS
-            ]
-            report["masks_found"] = len(masks)
-
-        return report
+        return {"images_found": len(images)}
 
     @staticmethod
     def class_distribution(

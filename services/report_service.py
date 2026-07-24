@@ -30,8 +30,8 @@ from config import REPORT_OUTPUT_DIR
 class ReportService:
     """PDF report generation service for research/demo output.
 
-    The generated report includes diagnosis, confidence, BI-RADS summary,
-    reliability, explainability artifacts, and a disclaimer.
+    The generated report includes diagnosis, confidence, reliability,
+    explainability artifacts, and a disclaimer.
     """
 
     def __init__(
@@ -64,7 +64,6 @@ class ReportService:
     def generate(
         self,
         prediction: Dict,
-        birads: Dict,
         confidence: Dict,
         heatmap: Optional[np.ndarray] = None,
         patient_id: str = "Demo Patient",
@@ -136,8 +135,6 @@ class ReportService:
             [
                 ["Diagnosis", prediction.get("prediction", "N/A")],
                 ["Cancer Probability", f"{prediction.get('confidence', 0):.2f}%"],
-                ["BI-RADS", birads.get("birads", "N/A")],
-                ["BI-RADS Confidence", f"{birads.get('confidence', 0):.2f}%"],
                 ["Final Reliability", confidence.get("reliability", "N/A")],
                 ["Uncertainty", f"{confidence.get('uncertainty', 0):.4f}"],
             ],
@@ -156,11 +153,9 @@ class ReportService:
         )
 
         diagnosis = prediction.get("prediction", "N/A")
-        birads_label = birads.get("birads", "N/A")
 
         interpretation = self._generate_interpretation(
             diagnosis,
-            birads_label,
             confidence,
         )
 
@@ -228,7 +223,6 @@ class ReportService:
     def _generate_interpretation(
         self,
         diagnosis: str,
-        birads_label: str,
         confidence: Dict,
     ) -> str:
 
@@ -248,8 +242,7 @@ class ReportService:
             )
 
         return (
-            f"The model prediction is <b>{diagnosis}</b> with BI-RADS assessment "
-            f"<b>{birads_label}</b>. The reliability level is <b>{reliability}</b>. "
+            f"The model prediction is <b>{diagnosis}</b>. The reliability level is <b>{reliability}</b>. "
             f"{recommendation}"
         )
 

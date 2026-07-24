@@ -44,14 +44,14 @@ class ExplainabilityService:
     @torch.no_grad()
     def generate(
         self,
-        roi: np.ndarray,
+        image: np.ndarray,
         class_id: Optional[int] = None,
         save_path: Optional[str] = None,
     ) -> Optional[np.ndarray]:
-        if roi is None:
-            raise ValueError("ROI must be provided for explainability generation.")
+        if image is None:
+            raise ValueError("Image must be provided for explainability generation.")
 
-        input_tensor = self._preprocess_roi(roi)
+        input_tensor = self._preprocess_image(image)
 
         try:
             cam = GradCAMPlusPlus(model=self.model, target_layers=[self.target_layer])
@@ -75,8 +75,8 @@ class ExplainabilityService:
             return None
 
         try:
-            rgb_roi = self._prepare_rgb_for_overlay(roi)
-            heatmap = show_cam_on_image(rgb_roi, grayscale_cam, use_rgb=True)
+            rgb_image = self._prepare_rgb_for_overlay(image)
+            heatmap = show_cam_on_image(rgb_image, grayscale_cam, use_rgb=True)
         except Exception as exc:
             self.logger.warning("Failed to render heatmap overlay: %s", exc)
             return None
@@ -91,46 +91,46 @@ class ExplainabilityService:
 
         return heatmap
 
-    def _preprocess_roi(self, roi: np.ndarray) -> torch.Tensor:
+    def _preprocess_image(self, image: np.ndarray) -> torch.Tensor:
         """Apply the fixed explainability preprocessing path."""
-        roi = self._ensure_rgb(roi)
+        image = self._ensure_rgb(image)
 
-        roi = cv2.resize(roi, (IMAGE_SIZE, IMAGE_SIZE))
-        roi = roi.astype(np.float32) / 255.0
+        image = cv2.resize(image, (IMAGE_SIZE, IMAGE_SIZE))
+        image = image.astype(np.float32) / 255.0
 
         mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
         std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
-        roi = (roi - mean) / std
+        image = (image - mean) / std
 
-        tensor = torch.from_numpy(roi.transpose(2, 0, 1)).float()
+        tensor = torch.from_numpy(image.transpose(2, 0, 1)).float()
         tensor = tensor.unsqueeze(0)
 
         return tensor.to(self.device)
 
-    def _prepare_rgb_for_overlay(self, roi: np.ndarray) -> np.ndarray:
+    def _prepare_rgb_for_overlay(self, image: np.ndarray) -> np.ndarray:
         """Prepare a normalized RGB image for Grad-CAM overlay rendering."""
-        roi = self._ensure_rgb(roi)
-        roi = cv2.resize(roi, (IMAGE_SIZE, IMAGE_SIZE))
-        roi = roi.astype(np.float32)
-        if roi.max() > 1:
-            roi = roi / 255.0
-        return roi
+        image = self._ensure_rgb(image)
+        image = cv2.resize(image, (IMAGE_SIZE, IMAGE_SIZE))
+        image = image.astype(np.float32)
+        if image.max() > 1:
+            image = image / 255.0
+        return image
 
-    def _ensure_rgb(self, roi: np.ndarray) -> np.ndarray:
+    def _ensure_rgb(self, image: np.ndarray) -> np.ndarray:
         """Normalize grayscale or RGBA inputs to RGB."""
-        if roi is None:
-            raise ValueError("ROI image is None.")
+        if image is None:
+            raise ValueError("Image is None.")
 
-        if roi.ndim == 2:
-            roi = cv2.cvtColor(roi, cv2.COLOR_GRAY2RGB)
-        elif roi.ndim == 3 and roi.shape[2] == 4:
-            roi = cv2.cvtColor(roi, cv2.COLOR_RGBA2RGB)
+        if image.ndim == 2:
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+        elif image.ndim == 3 and image.shape[2] == 4:
+            image = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
 
-        if roi.ndim != 3 or roi.shape[2] != 3:
-            raise ValueError(f"ROI must be HxWx3 or HxW, got {roi.shape}.")
+        if image.ndim != 3 or image.shape[2] != 3:
+            raise ValueError(f"Image must be HxWx3 or HxW, got {image.shape}.")
 
-        return roi
+        return image
 
     def _auto_find_target_layer(self):
         """Select the last convolution layer as the default Grad-CAM target."""
