@@ -22,6 +22,24 @@ def configure_page() -> None:
         page_icon="🩺",
         layout="wide",
     )
+    st.markdown(
+        """
+        <style>
+        .stApp {
+            overflow-x: hidden;
+        }
+        .stApp h1,
+        .stApp h2,
+        .stApp h3,
+        .stApp [data-testid="stMarkdownContainer"] {
+            max-width: 100%;
+            overflow-wrap: anywhere;
+            word-break: normal;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 @st.cache_resource

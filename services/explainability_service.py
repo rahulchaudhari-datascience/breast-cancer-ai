@@ -41,7 +41,6 @@ class ExplainabilityService:
 
         HEATMAP_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    @torch.no_grad()
     def generate(
         self,
         image: np.ndarray,
@@ -69,7 +68,8 @@ class ExplainabilityService:
                 targets = None
 
         try:
-            grayscale_cam = cam(input_tensor=input_tensor, targets=targets)[0]
+            with torch.enable_grad():
+                grayscale_cam = cam(input_tensor=input_tensor, targets=targets)[0]
         except Exception as exc:
             self.logger.warning("GradCAM++ generation failed: %s", exc)
             return None
